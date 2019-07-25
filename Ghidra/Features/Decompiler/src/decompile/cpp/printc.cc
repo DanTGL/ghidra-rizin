@@ -430,8 +430,9 @@ void PrintC::opFunc(const PcodeOp *op)
   string nm = op->getOpcode()->getOperatorName(op);
   pushAtom(Atom(nm,optoken,EmitMarkup::no_color,op));
   if (op->numInput() > 0) {
-    for(int4 i=0;i<op->numInput()-1;++i)
-      pushOp(&comma,op);
+    for(int4 i=0;i<op->numInput()-1;++i) {
+		pushOp(&comma,op);
+    }
   // implied vn's pushed on in reverse order for efficiency
   // see PrintLanguage::pushVnImplied
     for(int4 i=op->numInput()-1;i>=0;--i)
@@ -1568,6 +1569,10 @@ void PrintC::resetDefaultsPrintC(void)
   option_nocasts = false;
   option_NULL = false;
   option_unplaced = false;
+  option_space_after_comma = false;
+  option_newline_before_else = true;
+  option_newline_before_opening_brace = false;
+  option_newline_after_prototype = true;
   setCStyleComments();
 }
 
@@ -2107,7 +2112,10 @@ void PrintC::emitStructDefinition(const TypeStruct *ct)
     pushTypeEnd((*iter).type);
     iter++;
     if (iter != ct->endField()) {
-      emit->print(COMMA); // Print comma separator
+      emit->print(","); // Print comma separator
+      if (option_space_after_comma) {
+      	emit->spaces(1);
+      }
       emit->tagLine();
     }
   }
@@ -2204,8 +2212,12 @@ void PrintC::emitPrototypeInputs(const FuncProto *proto)
   else {
     bool printComma = false;
     for(int4 i=0;i<sz;++i) {
-      if (printComma)
+      if (printComma) {
 	emit->print(COMMA);
+	if (option_space_after_comma) {
+	  emit->spaces(1);
+	}
+      }
       ProtoParameter *param = proto->getParam(i);
       if (isSet(hide_thisparam) && param->isThisPointer())
 	continue;
@@ -2223,8 +2235,12 @@ void PrintC::emitPrototypeInputs(const FuncProto *proto)
     }
   }
   if (proto->isDotdotdot()) {
-    if (sz != 0)
+    if (sz != 0) {
       emit->print(COMMA);
+      if (option_space_after_comma) {
+	emit->spaces(1);
+      }
+    }
     emit->print(DOTDOTDOT);
   }
 }
@@ -2628,7 +2644,9 @@ void PrintC::docFunction(const Funcdata *fd)
     emit->tagLine();
     emitFunctionDeclaration(fd);	// Causes us to enter function's scope
     emit->tagLine();
-    emit->tagLine();
+    if (option_newline_after_prototype) {
+      emit->tagLine();
+    }
     int4 id = emit->startIndent();
     emit->print(OPEN_CURLY);
     emitLocalVarDecls(fd);
@@ -2896,7 +2914,11 @@ void PrintC::emitBlockIf(const BlockIf *bl)
   }
   else {
     setMod(no_branch);
-    emit->spaces(1);
+    if (!option_newline_before_opening_brace) {
+      emit->spaces(1);
+    } else {
+      emit->tagLine();
+    }
     int4 id = emit->startIndent();
     emit->print(OPEN_CURLY);
     int4 id1 = emit->beginBlock(bl->getBlock(1));
@@ -2906,9 +2928,15 @@ void PrintC::emitBlockIf(const BlockIf *bl)
     emit->tagLine();
     emit->print(CLOSE_CURLY);
     if (bl->getSize() == 3) {
-      emit->tagLine();
+      if (option_newline_before_else) {
+	emit->tagLine();
+      }
       emit->print(KEYWORD_ELSE,EmitMarkup::keyword_color);
-      emit->spaces(1);
+      if (option_newline_before_else) {
+	emit->tagLine();
+      } else {
+	emit->spaces(1);
+      }
       FlowBlock *elseBlock = bl->getBlock(2);
       if (elseBlock->getType() == FlowBlock::t_if) {
 	// Attempt to merge the "else" and "if" syntax
@@ -3075,7 +3103,11 @@ void PrintC::emitBlockDoWhile(const BlockDoWhile *bl)
   emitAnyLabelStatement(bl);
   emit->tagLine();
   emit->print(KEYWORD_DO,EmitMarkup::keyword_color);
-  emit->spaces(1);
+  if (option_newline_before_opening_brace) {
+    emit->tagLine();
+  } else {
+    emit->spaces(1);
+  }
   int4 id = emit->startIndent();
   emit->print(OPEN_CURLY);
   pushMod();
@@ -3107,7 +3139,11 @@ void PrintC::emitBlockInfLoop(const BlockInfLoop *bl)
   emitAnyLabelStatement(bl);
   emit->tagLine();
   emit->print(KEYWORD_DO,EmitMarkup::keyword_color);
-  emit->spaces(1);
+  if (option_newline_before_opening_brace) {
+    emit->tagLine();
+  } else {
+    emit->spaces(1);
+  }
   int4 id = emit->startIndent();
   emit->print(OPEN_CURLY);
   int4 id1 = emit->beginBlock(bl->getBlock(0));
