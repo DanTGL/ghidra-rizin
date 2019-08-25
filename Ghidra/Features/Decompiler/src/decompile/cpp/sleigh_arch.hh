@@ -114,7 +114,6 @@ class SleighArchitecture : public Architecture {
 protected:
   ostream *errorstream;					///< Error stream associated with \b this SleighArchitecture
   // buildLoader must be filled in by derived class
-  static void collectSpecFiles(ostream &errs);		///< Gather specification files in normal locations
   virtual Translate *buildTranslator(DocumentStorage &store);
   virtual PcodeInjectLibrary *buildPcodeInjectLibrary(void);
   virtual void buildTypegrp(DocumentStorage &store);
@@ -136,6 +135,8 @@ public:
   virtual ~SleighArchitecture(void);
   virtual string getDescription(void) const;
 
+  static void collectSpecFiles(ostream &errs);		///< Gather specification files in normal locations
+  static const vector<LanguageDescription> &getLanguageDescriptions() { return description; }
   static string normalizeProcessor(const string &nm);		///< Try to recover a \e language \e id processor field
   static string normalizeEndian(const string &nm);		///< Try to recover a \e language \e id endianess field
   static string normalizeSize(const string &nm);		///< Try to recover a \e language \e id size field
