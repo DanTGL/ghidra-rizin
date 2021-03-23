@@ -2328,7 +2328,9 @@ void PrintC::emitFunctionDeclaration(const Funcdata *fd)
   emitSymbolScope(fd->getSymbol());
   emit->tagFuncName(fd->getName().c_str(),EmitXml::funcname_color,
 		    fd,(PcodeOp *)0);
-
+  if (proto->isNoReturn()) {
+    emit->tagNoreturn();
+  }
   emit->spaces(function_call.spacing,function_call.bump);
   int4 id2 = emit->openParen('(');
   emit->spaces(0,function_call.bump);
