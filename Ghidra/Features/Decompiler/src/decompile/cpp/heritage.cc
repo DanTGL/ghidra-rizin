@@ -1402,6 +1402,8 @@ void Heritage::buildRefinement(vector<int4> &refine,const Address &addr,int4 siz
     Address curaddr = vnlist[i]->getAddr();
     int4 sz = vnlist[i]->getSize();
     uint4 diff = (uint4)(curaddr.getOffset() - addr.getOffset());
+    if (refine.size() <= (int8)diff + (int8)sz)
+	  throw LowlevelError("Heritage refine vector overflow");
     refine[diff] = 1;
     refine[diff+sz] = 1;
   }
