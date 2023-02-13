@@ -377,6 +377,7 @@ public:
 /// receive the XML document as calls are made on the encoder.
 class XmlEncode : public Encoder {
   friend class XmlDecode;
+protected:
   ostream &outStream;			///< The stream receiving the encoded data
   bool elementTagIsOpen;		///< If \b true, new attributes can be written to the current element
 public:
