@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -77,6 +77,7 @@ public class AddressInput extends JPanel implements FocusableEditor {
 		textField.setName("JTextField");//for JUnits...
 		combo = new GComboBox<>();
 		combo.setName("JComboBox");//for JUnits...
+		combo.getAccessibleContext().setAccessibleName("Address Space");
 		add(textField, BorderLayout.CENTER);
 		//add(combo, BorderLayout.WEST);
 		comboAdded = false;
@@ -122,6 +123,7 @@ public class AddressInput extends JPanel implements FocusableEditor {
 	/**
 	 * Returns the address in the field or null if the address can't
 	 * be parsed.
+	 * @return The address for the current value in the text field
 	 * 
 	 * @throws NullPointerException if AddressFactory has not been set.
 	 */
@@ -160,6 +162,14 @@ public class AddressInput extends JPanel implements FocusableEditor {
 		return textField.getText().length() != 0;
 	}
 
+	/**
+	 * Returns the text in this field.
+	 * @return the text in this field
+	 */
+	public String getText() {
+		return textField.getText();
+	}
+
 	public AddressFactory getAddressFactory() {
 		return addrFactory;
 	}
@@ -174,12 +184,12 @@ public class AddressInput extends JPanel implements FocusableEditor {
 	};
 
 	/**
-	 * Address Space predicate which include all loaded memory spaces plus the 
-	 * {@link AddressSpace#OTHER_SPACE}.  See {@link AddressSpace#isLoadedMemorySpace()}.
+	 * Address Space predicate which includes all memory spaces, including the 
+	 * {@link AddressSpace#OTHER_SPACE} and all overlay spaces. 
 	 * Intended for use with {@link #setAddressFactory(AddressFactory, Predicate)}.
 	 */
-	public final static Predicate<AddressSpace> INCLUDE_OTHER_AND_LOADED_MEMORY_SPACES = (s) -> {
-		return s.isLoadedMemorySpace() || s.equals(AddressSpace.OTHER_SPACE);
+	public final static Predicate<AddressSpace> INCLUDE_ALL_MEMORY_SPACES = (s) -> {
+		return s.isMemorySpace();
 	};
 
 	/**
@@ -359,6 +369,14 @@ public class AddressInput extends JPanel implements FocusableEditor {
 	}
 
 	/**
+	 * Sets the accessible name for this address input field.
+	 * @param name the accessible name for this address field
+	 */
+	public void setAccessibleName(String name) {
+		textField.getAccessibleContext().setAccessibleName(name);
+	}
+
+	/**
 	 * Set the text field to be editable according to the state param.
 	 */
 	public void setEditable(boolean state) {
@@ -398,7 +416,7 @@ public class AddressInput extends JPanel implements FocusableEditor {
 			remove(combo);
 			comboAdded = false;
 		}
-		invalidate();
+		revalidate();
 	}
 
 	@Override

@@ -290,6 +290,12 @@ bool PrintLanguage::parentheses(const OpToken *op2)
     //    if (associative && (this == &op2)) return false;
     if ((op2->type==OpToken::unary_prefix)||(op2->type==OpToken::presurround)) return false;
     return true;
+  case OpToken::unary_postfix:
+    if (topToken->precedence > op2->precedence) return true;
+    if (topToken->precedence < op2->precedence) return false;
+    //    if (associative && (this == &op2)) return false;
+    if (op2->type==OpToken::postsurround) return false;
+    return true;
   case OpToken::postsurround:
     if (stage==1) return false;	// Inside the surround
     if (topToken->precedence > op2->precedence) return true;
@@ -337,6 +343,11 @@ void PrintLanguage::emitOp(const ReversePolish &entry)
     break;
   case OpToken::unary_prefix:
     if (entry.visited!=0) return;
+    emit->tagOp(entry.tok->print1,EmitMarkup::no_color,entry.op);
+    emit->spaces(entry.tok->spacing,entry.tok->bump);
+    break;
+  case OpToken::unary_postfix:
+    if (entry.visited!=1) return;
     emit->tagOp(entry.tok->print1,EmitMarkup::no_color,entry.op);
     emit->spaces(entry.tok->spacing,entry.tok->bump);
     break;
@@ -552,11 +563,18 @@ void PrintLanguage::opBinary(const OpToken *tok,const PcodeOp *op)
     if (tok == (const OpToken *)0)
       throw LowlevelError("Could not find fliptoken");
   }
+  const Varnode *lhs = op->getIn(0);
+  const Varnode *rhs = op->getIn(1);
+  if (op->getIn(0)->isConstant() && tok->lrswap != (const OpToken *)0) {
+    tok = tok->lrswap;
+    lhs = op->getIn(1);
+    rhs = op->getIn(0);
+  }
   pushOp(tok,op);		// Push on reverse polish notation
   // implied vn's pushed on in reverse order for efficiency
   // see PrintLanguage::pushVnImplied
-  pushVn(op->getIn(1),op,mods);
-  pushVn(op->getIn(0),op,mods);
+  pushVn(rhs,op,mods);
+  pushVn(lhs,op,mods);
 }
 
 /// Push an operator onto the stack that has a normal unary format.
@@ -648,12 +666,12 @@ void PrintLanguage::emitLineComment(int4 indent,const Comment *comm)
   comm->setEmitted(true);
 }
 
-/// Tell the emitter whether to emit just the raw tokens or if additional mark-up should be provided.
-/// \param val is \b true for additional mark-up
-void PrintLanguage::setMarkup(bool val)
+/// Select packed or unpacked (XML) output, if the emitter supports it.
+/// \param val is \b true for packed or \b false for unpacked
+void PrintLanguage::setPackedOutput(bool val)
 
 {
-  ((EmitPrettyPrint *)emit)->setMarkup(val);
+  emit->setPackedOutput(val);
 }
 
 /// Emitting formal code structuring can be turned off, causing all control-flow

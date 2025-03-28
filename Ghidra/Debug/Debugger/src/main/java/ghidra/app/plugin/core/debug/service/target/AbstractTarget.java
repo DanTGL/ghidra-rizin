@@ -58,6 +58,10 @@ public abstract class AbstractTarget implements Target {
 		this.tool = tool;
 	}
 
+	public PluginTool getTool() {
+		return tool;
+	}
+
 	private Address staticToDynamicAddress(ProgramLocation location) {
 		DebuggerStaticMappingService mappingService =
 			tool.getService(DebuggerStaticMappingService.class);
@@ -73,10 +77,14 @@ public abstract class AbstractTarget implements Target {
 	}
 
 	protected Address findAddress(Navigatable nav) {
-		if (nav.isDynamic()) {
-			return nav.getLocation().getAddress();
+		ProgramLocation location = nav.getLocation();
+		if (location == null) {
+			return null;
 		}
-		return staticToDynamicAddress(nav.getLocation());
+		if (nav.isDynamic()) {
+			return location.getAddress();
+		}
+		return staticToDynamicAddress(location);
 	}
 
 	protected Address findAddress(MarkerLocation location) {
@@ -94,7 +102,7 @@ public abstract class AbstractTarget implements Target {
 				return address;
 			}
 		}
-		if (context.getContextObject() instanceof MarkerLocation ml) {
+		if (context != null && context.getContextObject() instanceof MarkerLocation ml) {
 			Address address = findAddress(ml);
 			if (address != null) {
 				return address;
@@ -118,7 +126,7 @@ public abstract class AbstractTarget implements Target {
 	}
 
 	protected AddressRange singleRange(AddressSetView set) {
-		if (set.getNumAddressRanges() != 1) {
+		if (set == null || set.getNumAddressRanges() != 1) {
 			return null;
 		}
 		return set.getFirstRange();
@@ -189,7 +197,9 @@ public abstract class AbstractTarget implements Target {
 			collectStepIntoActions(context),
 			collectStepOverActions(context),
 			collectStepOutActions(context),
-			collectStepExtActions(context))
+			collectStepExtActions(context),
+			collectRefreshActions(context),
+			collectToggleActions(context))
 				.flatMap(m -> m.entrySet().stream())
 				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
 	}
@@ -207,6 +217,10 @@ public abstract class AbstractTarget implements Target {
 	protected abstract Map<String, ActionEntry> collectStepOutActions(ActionContext context);
 
 	protected abstract Map<String, ActionEntry> collectStepExtActions(ActionContext context);
+
+	protected abstract Map<String, ActionEntry> collectRefreshActions(ActionContext context);
+
+	protected abstract Map<String, ActionEntry> collectToggleActions(ActionContext context);
 
 	@Override
 	public Map<String, ActionEntry> collectActions(ActionName name, ActionContext context) {
@@ -236,6 +250,12 @@ public abstract class AbstractTarget implements Target {
 		}
 		else if (ActionName.STEP_EXT.equals(name)) {
 			return collectStepExtActions(context);
+		}
+		else if (ActionName.REFRESH.equals(name)) {
+			return collectRefreshActions(context);
+		}
+		else if (ActionName.TOGGLE.equals(name)) {
+			return collectToggleActions(context);
 		}
 		Msg.warn(this, "Unrecognized action name: " + name);
 		return Map.of();
@@ -291,6 +311,11 @@ public abstract class AbstractTarget implements Target {
 	protected static void runSyncMonitored(TaskMonitor monitor, String name,
 			Supplier<CompletableFuture<Void>> supplier) throws CancelledException {
 		getSyncMonitored(monitor, name, supplier);
+	}
+
+	@Override
+	public String execute(String command, boolean toString) {
+		return getSync("execute", () -> executeAsync(command, toString));
 	}
 
 	@Override
@@ -384,6 +409,11 @@ public abstract class AbstractTarget implements Target {
 	public void toggleBreakpoint(TraceBreakpoint breakpoint, boolean enabled) {
 		String msg = enabled ? "enable breakpoint" : "disable breakpoint";
 		runSync(msg, () -> toggleBreakpointAsync(breakpoint, enabled));
+	}
+
+	@Override
+	public void forceTerminate() {
+		runSync("force terminate", () -> forceTerminateAsync());
 	}
 
 	@Override

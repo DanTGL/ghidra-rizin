@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -48,7 +48,8 @@ struct PartialSymbolEntry {
   const OpToken *token;		///< Operator used to drill-down to the field
   const TypeField *field;	///< The component object describing the field
   const Datatype *parent;	///< The parent data-type owning the field
-  string fieldname;		///< The name of the field
+  int8 offset;			///< Array index or unlabeled offset (if field is null)
+  int4 size;			///< (if > 0) Size of the unlabeled entry
   EmitMarkup::syntax_highlight hilite;	///< Highlight information for the field token
 };
 
@@ -74,6 +75,10 @@ protected:
   static OpToken boolean_not;		///< The \e boolean \e not operator
   static OpToken unary_minus;		///< The \e unary \e minus operator
   static OpToken unary_plus;		///< The \e unary \e plus operator
+  static OpToken pre_increment;		///< The \e pre increment \e operator
+  static OpToken pre_decrement;		///< The \e pre decrement \e operator
+  static OpToken post_increment;	///< The \e post increment \e operator
+  static OpToken post_decrement;	///< The \e post decrement \e operator
   static OpToken addressof;		///< The \e address \e of operator
   static OpToken dereference;		///< The \e pointer \e dereference operator
   static OpToken typecast;		///< The \e type \e cast operator
@@ -148,10 +153,10 @@ protected:
   bool option_nocasts;		///< Don't print a cast if \b true
   bool option_unplaced;		///< Set to \b true if we should display unplaced comments
   bool option_hide_exts;	///< Set to \b true if we should hide implied extension operations
-  bool option_space_after_comma;
-  bool option_newline_before_else;
-  bool option_newline_before_opening_brace;
-  bool option_newline_after_prototype;
+  Emit::brace_style option_brace_func;		///< How function declaration braces should be formatted
+  Emit::brace_style option_brace_ifelse;	///< How braces for if/else blocks are formatted
+  Emit::brace_style option_brace_loop;		///< How braces for loop blocks are formatted
+  Emit::brace_style option_brace_switch;	///< How braces for switch blocks are formatted
   string nullToken;		///< Token to use for 'null'
   string sizeSuffix;		///< Characters to print to indicate a \e long integer token
   CommentSorter commsorter;	///< Container/organizer for comments in the current function
@@ -183,7 +188,8 @@ protected:
   void emitPrototypeInputs(const FuncProto *proto);	///< Emit the input data-types of a function prototype
   void emitGlobalVarDeclsRecursive(Scope *symScope);	///< Emit variable declarations for all global symbols under given scope
   void emitLocalVarDecls(const Funcdata *fd);		///< Emit variable declarations for a function
-  virtual void emitStatement(const PcodeOp *inst);	///< Emit a statement in the body of a function
+  void emitStatement(const PcodeOp *inst);		///< Emit a statement in the body of a function
+  bool emitIncDecOp(const PcodeOp *op);			///< Attempt to emit a increment or deincrement expression
   bool emitInplaceOp(const PcodeOp *op);		///< Attempt to emit an expression rooted at an \e in-place operator
   virtual void emitGotoStatement(const FlowBlock *bl,const FlowBlock *exp_bl,uint4 type);
   void emitSwitchCase(int4 casenum,const BlockSwitch *switchbl);	///< Emit labels for a \e case block
@@ -242,10 +248,10 @@ public:
   void setCPlusPlusStyleComments(void) { setCommentDelimeter("// ","",true); }	///< Set c++-style "//" comment delimiters
   void setDisplayUnplaced(bool val) { option_unplaced = val; }	///< Toggle whether \e unplaced comments are displayed in the header
   void setHideImpliedExts(bool val) { option_hide_exts = val; }	///< Toggle whether implied extensions are hidden
-  void setSpaceAfterComma(bool val) { option_space_after_comma = val; }
-  void setNewlineBeforeOpeningBrace(bool val) { option_newline_before_opening_brace = val; }
-  void setNewlineBeforeElse(bool val) { option_newline_before_else = val; }
-  void setNewlineAfterPrototype(bool val) { option_newline_after_prototype = val; }
+  void setBraceFormatFunction(Emit::brace_style style) { option_brace_func = style; }	///< Set how function declarations are formatted
+  void setBraceFormatIfElse(Emit::brace_style style) { option_brace_ifelse = style; }	///< Set how if/else blocks are formatted
+  void setBraceFormatLoop(Emit::brace_style style) { option_brace_loop = style; }	///< Set how loop blocks are formatted
+  void setBraceFormatSwitch(Emit::brace_style style) { option_brace_switch = style; }	///< Set how switch blocks are formatted
   virtual ~PrintC(void) {}
   virtual void resetDefaults(void);
   virtual void initializeFromArchitecture(void);
@@ -321,7 +327,7 @@ public:
   virtual void opFloatNeg(const PcodeOp *op) { opUnary(&unary_minus,op); }
   virtual void opFloatAbs(const PcodeOp *op) { opFunc(op); }
   virtual void opFloatSqrt(const PcodeOp *op) { opFunc(op); }
-  virtual void opFloatInt2Float(const PcodeOp *op) { opTypeCast(op); }
+  virtual void opFloatInt2Float(const PcodeOp *op);
   virtual void opFloatFloat2Float(const PcodeOp *op) { opTypeCast(op); }
   virtual void opFloatTrunc(const PcodeOp *op) { opTypeCast(op); }
   virtual void opFloatCeil(const PcodeOp *op) { opFunc(op); }
@@ -349,8 +355,9 @@ public:
 /// The open brace can be canceled if the block decides it wants to use "else if" syntax.
 class PendingBrace : public PendPrint {
   int4 indentId;		///< Id associated with the new indent level
+  Emit::brace_style style;	///< Style to use for pending brace
 public:
-  PendingBrace(void) { indentId = -1; }			///< Constructor
+  PendingBrace(Emit::brace_style s) { indentId = -1; style = s; }			///< Constructor
   int4 getIndentId(void) const { return indentId; }	///< If commands have been issued, returns the new indent level id.
   virtual void callback(Emit *emit);
 };

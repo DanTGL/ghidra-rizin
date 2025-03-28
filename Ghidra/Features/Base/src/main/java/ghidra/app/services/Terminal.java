@@ -55,6 +55,8 @@ public interface Terminal extends AutoCloseable {
 
 	/**
 	 * @see #injectDisplayOutput(ByteBuffer)
+	 * 
+	 * @param arr the array of bytes to inject
 	 */
 	default void injectDisplayOutput(byte[] arr) {
 		injectDisplayOutput(ByteBuffer.wrap(arr));
@@ -87,6 +89,9 @@ public interface Terminal extends AutoCloseable {
 
 	/**
 	 * @see #setFixedSize(short, short)
+	 * 
+	 * @param cols the number of columns
+	 * @param rows the number of rows
 	 */
 	default void setFixedSize(int cols, int rows) {
 		setFixedSize((short) cols, (short) rows);
@@ -102,6 +107,8 @@ public interface Terminal extends AutoCloseable {
 	 * 
 	 * <p>
 	 * This only affects the primary buffer. The alternate buffer has no scroll-back.
+	 * 
+	 * @param rows the number of scroll-back rows
 	 */
 	void setMaxScrollBackRows(int rows);
 
@@ -203,4 +210,16 @@ public interface Terminal extends AutoCloseable {
 	 * @param action the action to terminate the session, or null to remove the action
 	 */
 	void setTerminateAction(Runnable action);
+
+	/**
+	 * Check whether the terminal is terminated or active
+	 * 
+	 * @return true for terminated, false for active
+	 */
+	boolean isTerminated();
+
+	/**
+	 * Bring the terminal to the front of the UI
+	 */
+	void toFront();
 }

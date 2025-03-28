@@ -19,6 +19,7 @@ import java.util.Collection;
 import java.util.concurrent.CompletableFuture;
 
 import ghidra.async.AsyncReference;
+import ghidra.debug.api.target.Target;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
 import ghidra.framework.model.DomainFile;
 import ghidra.framework.plugintool.ServiceInfo;
@@ -250,6 +251,18 @@ public interface DebuggerTraceManagerService {
 	void closeTrace(Trace trace);
 
 	/**
+	 * Close the given trace without confirmation
+	 * 
+	 * <p>
+	 * Ordinarily, {@link #closeTrace(Trace)} will prompt the user to confirm termination of live
+	 * targets associated with traces to be closed. Such prompts can cause issues during automated
+	 * tests.
+	 * 
+	 * @param trace the trace to close
+	 */
+	void closeTraceNoConfirm(Trace trace);
+
+	/**
 	 * Close all traces
 	 */
 	void closeAllTraces();
@@ -302,7 +315,7 @@ public interface DebuggerTraceManagerService {
 	 * 
 	 * <p>
 	 * If asynchronous notification is needed, use
-	 * {@link #activateAndNotify(DebuggerCoordinates, boolean)}.
+	 * {@link #activateAndNotify(DebuggerCoordinates, ActivationCause)}.
 	 * 
 	 * @param coordinates the desired coordinates
 	 * @param cause the cause of activation
@@ -328,6 +341,24 @@ public interface DebuggerTraceManagerService {
 	 */
 	default void activateTrace(Trace trace) {
 		activate(resolveTrace(trace));
+	}
+
+	/**
+	 * Resolve coordinates for the given target using the manager's "best judgment"
+	 * 
+	 * @see #resolveTrace(Trace)
+	 * @param target the target
+	 * @return the best coordinates
+	 */
+	DebuggerCoordinates resolveTarget(Target target);
+
+	/**
+	 * Activate the given target
+	 * 
+	 * @param target the desired target
+	 */
+	default void activateTarget(Target target) {
+		activate(resolveTarget(target));
 	}
 
 	/**
@@ -439,7 +470,7 @@ public interface DebuggerTraceManagerService {
 	DebuggerCoordinates resolvePath(TraceObjectKeyPath path);
 
 	/**
-	 * Activate the given object path
+	 * Activate the given canonical object path
 	 * 
 	 * @param path the desired path
 	 */
@@ -464,34 +495,6 @@ public interface DebuggerTraceManagerService {
 	default void activateObject(TraceObject object) {
 		activate(resolveObject(object));
 	}
-
-	/**
-	 * Control whether trace activation is synchronized with debugger activation
-	 * 
-	 * @param enabled true to synchronize, false otherwise
-	 */
-	void setSynchronizeActive(boolean enabled);
-
-	/**
-	 * Check whether trace activation is synchronized with debugger activation
-	 * 
-	 * @return true if synchronized, false otherwise
-	 */
-	boolean isSynchronizeActive();
-
-	/**
-	 * Add a listener for changes to activation synchronization enablement
-	 * 
-	 * @param listener the listener to receive change notifications
-	 */
-	void addSynchronizeActiveChangeListener(BooleanChangeAdapter listener);
-
-	/**
-	 * Remove a listener for changes to activation synchronization enablement
-	 * 
-	 * @param listener the listener receiving change notifications
-	 */
-	void removeSynchronizeActiveChangeListener(BooleanChangeAdapter listener);
 
 	/**
 	 * Control whether traces should be saved by default

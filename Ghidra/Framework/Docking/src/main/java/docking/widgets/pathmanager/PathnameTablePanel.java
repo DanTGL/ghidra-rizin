@@ -57,6 +57,7 @@ public class PathnameTablePanel extends JPanel {
 	private GhidraFileFilter filter;
 	private boolean addToTop;
 	private boolean ordered;
+	private boolean supportsDotPath;
 
 	private Callback resetCallback;
 
@@ -64,7 +65,7 @@ public class PathnameTablePanel extends JPanel {
 
 	/**
 	 * Construct a new PathnameTablePanel.
-	 * 
+	 *
 	 * @param paths list of paths to show; may be null
 	 * @param enableEdits true to allow editing of entries <em>directly in the table</em>, i.e., via
 	 *            the cell editor. The add and remove buttons still allow modification of the list.
@@ -85,7 +86,7 @@ public class PathnameTablePanel extends JPanel {
 
 	/**
 	 * Construct a new PathnameTablePanel with a reset button
-	 * 
+	 *
 	 * @param paths list of paths to show; may be null
 	 * @param resetCallback callback containing the action to perform if the reset button is pressed
 	 * @param enableEdits true to allow editing of entries <em>directly in the table</em>, i.e., via
@@ -95,12 +96,15 @@ public class PathnameTablePanel extends JPanel {
 	 *            false.
 	 * @param ordered true if the order of entries matters. If so, up and down buttons are provided
 	 *            so the user may arrange the entries. If not, entries are sorted alphabetically.
+	 * @param supportsDotPath true if the add button should support adding the "." path.  If so,
+	 *            the user will be prompted to choose from a file browser, or adding ".".
 	 */
 	public PathnameTablePanel(String[] paths, Callback resetCallback, boolean enableEdits,
-			boolean addToTop, boolean ordered) {
+			boolean addToTop, boolean ordered, boolean supportsDotPath) {
 		super(new BorderLayout(5, 5));
 		this.addToTop = addToTop;
 		this.ordered = ordered;
+		this.supportsDotPath = supportsDotPath;
 		this.resetCallback = resetCallback;
 		tableModel = new PathnameTableModel(paths, enableEdits);
 		create();
@@ -108,7 +112,7 @@ public class PathnameTablePanel extends JPanel {
 
 	/**
 	 * Set properties on the file chooser that is displayed when the "Add" button is pressed.
-	 * 
+	 *
 	 * @param title title of the file chooser
 	 * @param preferenceForLastSelectedDir Preference to use as the current directory in the file
 	 *            chooser
@@ -129,7 +133,7 @@ public class PathnameTablePanel extends JPanel {
 
 	/**
 	 * Set whether the entries in the table can be edited.
-	 * 
+	 *
 	 * @param enableEdits false means to not allow editing; the table is editable by default.
 	 */
 	public void setEditingEnabled(boolean enableEdits) {
@@ -139,7 +143,7 @@ public class PathnameTablePanel extends JPanel {
 	/**
 	 * Set whether new paths should be added to the top of the table (true) or at the end of the
 	 * table (false).
-	 * 
+	 *
 	 * @param addToTop true means to add to the top of the table
 	 */
 	public void setAddToTop(boolean addToTop) {
@@ -148,13 +152,13 @@ public class PathnameTablePanel extends JPanel {
 
 	/**
 	 * Set whether the order of entries in the table matters.
-	 * 
+	 *
 	 * <p>
 	 * <b>WARNING:</b> When this is set to false, the entries are immediately sorted and the up and
 	 * down buttons removed. Setting it back to true will replace the buttons, but will <em>not</em>
 	 * restore the order. In general, this should be set once, at the start of the table's life
 	 * cycle.
-	 * 
+	 *
 	 * @param ordered true means the user can control the order, false means they cannot.
 	 */
 	public void setOrdered(boolean ordered) {
@@ -232,7 +236,6 @@ public class PathnameTablePanel extends JPanel {
 		pathnameTable.setTableHeader(null);
 		pathnameTable.setSelectionMode(ListSelectionModel.MULTIPLE_INTERVAL_SELECTION);
 		JScrollPane scrollPane = new JScrollPane(pathnameTable);
-		scrollPane.getViewport().setBackground(pathnameTable.getBackground());
 
 		setDefaultCellRenderer();
 
@@ -279,8 +282,10 @@ public class PathnameTablePanel extends JPanel {
 					pathName = "";
 				}
 				else {
-					File file = new File(pathName);
-					fileExists = file.exists();
+					int colonSlashSlash = pathName.indexOf("://");
+					if (colonSlashSlash <= 0) { // Assume FSRL/URLs always exist
+						fileExists = new File(pathName).exists();
+					}
 				}
 
 				label.setText(pathName.toString());
@@ -315,6 +320,17 @@ public class PathnameTablePanel extends JPanel {
 
 	private void add() {
 
+		if (supportsDotPath && !Arrays.stream(getPaths()).anyMatch(p -> p.equals("."))) {
+			int selection =
+				OptionDialog.showOptionNoCancelDialog(this, "Add Path", "Choose how to add a path:",
+					"File Chooser", "Program's Import Location", OptionDialog.QUESTION_MESSAGE);
+
+			if (selection == OptionDialog.OPTION_TWO) {
+				tableModel.addPaths(new String[] { "." }, addToTop, !ordered);
+				return;
+			}
+		}
+
 		GhidraFileChooser fileChooser = new GhidraFileChooser(this);
 		fileChooser.setMultiSelectionEnabled(allowMultiFileSelection);
 		fileChooser.setFileSelectionMode(fileChooserMode);
@@ -323,9 +339,12 @@ public class PathnameTablePanel extends JPanel {
 		if (filter != null) {
 			fileChooser.addFileFilter(filter);
 		}
-		String dir = Preferences.getProperty(preferenceForLastSelectedDir);
-		if (dir != null) {
-			fileChooser.setCurrentDirectory(new File(dir));
+		String dirPath = Preferences.getProperty(preferenceForLastSelectedDir);
+		if (dirPath != null) {
+			File dir = new File(dirPath);
+			if (dir.isDirectory()) {
+				fileChooser.setCurrentDirectory(dir);
+			}
 		}
 
 		List<File> files = fileChooser.getSelectedFiles();
@@ -359,7 +378,7 @@ public class PathnameTablePanel extends JPanel {
 		String confirmation = """
 				<html><body width="200px">
 				  Are you sure you would like to reset the paths to the default list?
-				  This will remove all paths manually added.
+				  This will remove all paths manually added and cannot be later cancelled.
 				</html>""";
 		String header = "Reset Paths?";
 

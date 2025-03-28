@@ -28,10 +28,10 @@ extern AttributeId ATTRIB_ARRAYSIZE;	///< Marshaling attribute "arraysize"
 extern AttributeId ATTRIB_CHAR;		///< Marshaling attribute "char"
 extern AttributeId ATTRIB_CORE;		///< Marshaling attribute "core"
 extern AttributeId ATTRIB_ENUM;		///< Marshaling attribute "enum"
-extern AttributeId ATTRIB_ENUMSIGNED;	///< Marshaling attribute "enumsigned"
-extern AttributeId ATTRIB_ENUMSIZE;	///< Marshaling attribute "enumsize"
-extern AttributeId ATTRIB_INTSIZE;	///< Marshaling attribute "intsize"
-extern AttributeId ATTRIB_LONGSIZE;	///< Marshaling attribute "longsize"
+//extern AttributeId ATTRIB_ENUMSIGNED;	///< Marshaling attribute "enumsigned" deprecated
+//extern AttributeId ATTRIB_ENUMSIZE;	///< Marshaling attribute "enumsize" deprecated
+//extern AttributeId ATTRIB_INTSIZE;	///< Marshaling attribute "intsize"  deprecated
+//extern AttributeId ATTRIB_LONGSIZE;	///< Marshaling attribute "longsize" deprecated
 extern AttributeId ATTRIB_OPAQUESTRING;	///< Marshaling attribute "opaquestring"
 extern AttributeId ATTRIB_SIGNED;	///< Marshaling attribute "signed"
 extern AttributeId ATTRIB_STRUCTALIGN;	///< Marshaling attribute "structalign"
@@ -40,7 +40,7 @@ extern AttributeId ATTRIB_VARLENGTH;	///< Marshaling attribute "varlength"
 
 //extern ElementId ELEM_ABSOLUTE_MAX_ALIGNMENT;	///< Marshaling element \<absolute_max_alignment>
 //extern ElementId ELEM_BITFIELD_PACKING;		///< Marshaling element \<bitfield_packing>
-//extern ElementId ELEM_CHAR_SIZE;		///< Marshaling element \<char_size>
+extern ElementId ELEM_CHAR_SIZE;		///< Marshaling element \<char_size>
 //extern ElementId ELEM_CHAR_TYPE;		///< Marshaling element \<char_type>
 extern ElementId ELEM_CORETYPES;		///< Marshaling element \<coretypes>
 extern ElementId ELEM_DATA_ORGANIZATION;	///< Marshaling element \<data_organization>
@@ -66,7 +66,7 @@ extern ElementId ELEM_TYPE;			///< Marshaling element \<type>
 extern ElementId ELEM_TYPEGRP;			///< Marshaling element \<typegrp>
 extern ElementId ELEM_TYPEREF;			///< Marshaling element \<typeref>
 //extern ElementId ELEM_USE_MS_CONVENTION;	///< Marshaling element \<use_MS_convention>
-//extern ElementId ELEM_WCHAR_SIZE;		///< Marshaling element \<wchar_size>
+extern ElementId ELEM_WCHAR_SIZE;		///< Marshaling element \<wchar_size>
 //extern ElementId ELEM_ZERO_LENGTH_BOUNDARY;	///< Marshaling element \<zero_length_boundary>
 
 /// Print a hex dump of a data buffer to stream
@@ -122,11 +122,31 @@ enum sub_metatype {
   SUB_UNION = 1,		///< Compare as TYPE_UNION
   SUB_PARTIALUNION = 0		///< Compare as a TYPE_PARTIALUNION
 };
+
+/// Data-type classes for the purpose of assigning storage
+enum type_class {
+  TYPECLASS_GENERAL = 0,	///< General purpose
+  TYPECLASS_FLOAT = 1,		///< Floating-point data-types
+  TYPECLASS_PTR = 2,		///< Pointer data-types
+  TYPECLASS_HIDDENRET = 3,	///< Class for hidden return values
+  TYPECLASS_VECTOR = 4,		///< Vector data-types
+  TYPECLASS_CLASS1 = 100,	///< Architecture specific class 1
+  TYPECLASS_CLASS2 = 101,	///< Architecture specific class 2
+  TYPECLASS_CLASS3 = 102,	///< Architecture specific class 3
+  TYPECLASS_CLASS4 = 103	///< Architecture specific class 4
+};
+
 /// Convert type \b meta-type to name
 extern void metatype2string(type_metatype metatype,string &res);
 
 /// Convert string to type \b meta-type
 extern type_metatype string2metatype(const string &metastring);
+
+/// Convert a string to a data-type class
+extern type_class string2typeclass(const string &classstring);
+
+/// Convert a data-type metatype to a data-type class
+extern type_class metatype2typeclass(type_metatype meta);
 
 class Architecture;		// Forward declarations
 class PcodeOp;
@@ -172,7 +192,7 @@ protected:
   int4 alignment;		///< Byte alignment expected for \b this data-type in addressable memory
   int4 alignSize;		///< Size of data-type rounded up to a multiple of \b alignment
   void decodeBasic(Decoder &decoder);	///< Recover basic data-type properties
-  void encodeBasic(type_metatype meta,Encoder &encoder) const;	///< Encode basic data-type properties
+  void encodeBasic(type_metatype meta,int4 align,Encoder &encoder) const;	///< Encode basic data-type properties
   void encodeTypedef(Encoder &encoder) const;	///< Encode \b this as a \e typedef element to a stream
   void markComplete(void) { flags &= ~(uint4)type_incomplete; }		///< Mark \b this data-type as completely defined
   void setDisplayFormat(uint4 format);		///< Set a specific display format
@@ -248,7 +268,7 @@ public:
   virtual int4 compare(const Datatype &op,int4 level) const; ///< Order types for propagation
   virtual int4 compareDependency(const Datatype &op) const; ///< Compare for storage in tree structure
   virtual void encode(Encoder &encoder) const;	///< Encode the data-type to a stream
-  virtual bool isPtrsubMatching(uintb off) const;	///< Is this data-type suitable as input to a CPUI_PTRSUB op
+  virtual bool isPtrsubMatching(int8 off,int8 extra,int8 multiplier) const;	///< Is this data-type suitable as input to a CPUI_PTRSUB op
   virtual Datatype *getStripped(void) const;		///< Get a stripped version of \b this for formal use in formal declarations
   virtual Datatype *resolveInFlow(PcodeOp *op,int4 slot);	///< Tailor data-type propagation based on Varnode use
   virtual Datatype* findResolve(const PcodeOp *op,int4 slot);	///< Find a previously resolved sub-type
@@ -258,6 +278,7 @@ public:
   int4 typeOrderBool(const Datatype &op) const;	///< Order \b this with -op-, treating \e bool data-type as special
   void encodeRef(Encoder &encoder) const;	///< Encode a reference of \b this to a stream
   bool isPieceStructured(void) const;		///< Does \b this data-type consist of separate pieces?
+  bool isPrimitiveWhole(void) const;		///< Is \b this made up of a single primitive
   static uint4 encodeIntegerFormat(const string &val);
   static string decodeIntegerFormat(uint4 val);
 };
@@ -372,6 +393,7 @@ protected:
   AddrSpace *spaceid;		///< If non-null, the address space \b this is intented to point into
   TypePointer *truncate;	///< Truncated form of the pointer (if not null)
   uint4 wordsize;               ///< What size unit does the pointer address
+  static bool testForArraySlack(Datatype *dt,int8 off);	///< Test if an \e out-of-bounds offset makes sense as array slack
   void decode(Decoder &decoder,TypeFactory &typegrp);	///< Restore \b this pointer data-type from a stream
   void calcSubmeta(void);	///< Calculate specific submeta for \b this pointer
   void calcTruncate(TypeFactory &typegrp);	// Assign a truncated pointer subcomponent if necessary
@@ -399,7 +421,7 @@ public:
   virtual Datatype *clone(void) const { return new TypePointer(*this); }
   virtual void encode(Encoder &encoder) const;
   virtual TypePointer *downChain(int8 &off,TypePointer *&par,int8 &parOff,bool allowArrayWrap,TypeFactory &typegrp);
-  virtual bool isPtrsubMatching(uintb off) const;
+  virtual bool isPtrsubMatching(int8 off,int8 extra,int8 multiplier) const;
   virtual Datatype *resolveInFlow(PcodeOp *op,int4 slot);
   virtual Datatype* findResolve(const PcodeOp *op,int4 slot);
 };
@@ -470,7 +492,7 @@ class TypeStruct : public Datatype {
 protected:
   friend class TypeFactory;
   vector<TypeField> field;			///< The list of fields
-  void setFields(const vector<TypeField> &fd);	///< Establish fields for \b this
+  void setFields(const vector<TypeField> &fd,int4 fixedSize,int4 fixedAlign);	///< Establish fields for \b this
   int4 getFieldIter(int4 off) const;		///< Get index into field list
   int4 getLowerBoundField(int4 off) const;	///< Get index of last field before or equal to given offset
   void decodeFields(Decoder &decoder,TypeFactory &typegrp);	///< Restore fields from a stream
@@ -505,7 +527,7 @@ class TypeUnion : public Datatype {
 protected:
   friend class TypeFactory;
   vector<TypeField> field;			///< The list of fields
-  void setFields(const vector<TypeField> &fd);	///< Establish fields for \b this
+  void setFields(const vector<TypeField> &fd,int4 fixedSize,int4 fixedAlign);	///< Establish fields for \b this
   void decodeFields(Decoder &decoder,TypeFactory &typegrp);	///< Restore fields from a stream
 public:
   TypeUnion(const TypeUnion &op);	///< Construct from another TypeUnion
@@ -534,6 +556,7 @@ class TypePartialStruct : public Datatype {
 public:
   TypePartialStruct(const TypePartialStruct &op);	///< Construct from another TypePartialStruct
   TypePartialStruct(Datatype *contain,int4 off,int4 sz,Datatype *strip);	///< Constructor
+  int4 getOffset(void) const { return offset; }		///< Get the byte offset into the containing data-type
   Datatype *getParent(void) const { return container; }	///< Get the data-type containing \b this piece
   virtual void printRaw(ostream &s) const;
   virtual Datatype *getSubType(int8 off,int8 *newoff) const;
@@ -559,6 +582,7 @@ protected:
 public:
   TypePartialUnion(const TypePartialUnion &op);			///< Construct from another TypePartialUnion
   TypePartialUnion(TypeUnion *contain,int4 off,int4 sz,Datatype *strip);	///< Constructor
+  int4 getOffset(void) const { return offset; }			///< Get the byte offset into the containing data-type
   TypeUnion *getParentUnion(void) const { return container; }	///< Get the union which \b this is part of
   virtual void printRaw(ostream &s) const;
   virtual const TypeField *findTruncation(int8 off,int4 sz,const PcodeOp *op,int4 slot,int8 &newoff) const;
@@ -610,13 +634,13 @@ public:
   virtual Datatype *clone(void) const { return new TypePointerRel(*this); }
   virtual void encode(Encoder &encoder) const;
   virtual TypePointer *downChain(int8 &off,TypePointer *&par,int8 &parOff,bool allowArrayWrap,TypeFactory &typegrp);
-  virtual bool isPtrsubMatching(uintb off) const;
+  virtual bool isPtrsubMatching(int8 off,int8 extra,int8 multiplier) const;
   virtual Datatype *getStripped(void) const { return stripped; }	///< Get the plain form of the pointer
   static Datatype *getPtrToFromParent(Datatype *base,int4 off,TypeFactory &typegrp);
 };
 
 class FuncProto;		// Forward declaration
-class ProtoModel;
+class PrototypePieces;
 
 /// \brief Datatype object representing executable code.
 ///
@@ -626,9 +650,7 @@ protected:
   friend class TypeFactory;
   FuncProto *proto;		///< If non-null, this describes the prototype of the underlying function
   TypeFactory *factory;		///< Factory owning \b this
-  void setPrototype(TypeFactory *tfact,ProtoModel *model,
-		    Datatype *outtype,const vector<Datatype *> &intypes,
-		    bool dotdotdot,Datatype *voidtype);	///< Establish a function pointer
+  void setPrototype(TypeFactory *tfact,const PrototypePieces &sig,Datatype *voidtype);	///< Establish a function pointer
   void setPrototype(TypeFactory *typegrp,const FuncProto *fp);	///< Set a particular function prototype on \b this
   void decodeStub(Decoder &decoder);		///< Restore stub of data-type without the full prototype
   void decodePrototype(Decoder &decoder,bool isConstructor,bool isDestructor,TypeFactory &typegrp);	///< Restore any prototype description
@@ -678,8 +700,10 @@ public:
 
 /// \brief Container class for all Datatype objects in an Architecture
 class TypeFactory {
-  int4 sizeOfInt;		///< Size of the core "int" datatype
-  int4 sizeOfLong;		///< Size of the core "long" datatype
+  int4 sizeOfInt;		///< Size of the core "int" data-type
+  int4 sizeOfLong;		///< Size of the core "long" data-type
+  int4 sizeOfChar;		///< Size of the core "char" data-type
+  int4 sizeOfWChar;		///< Size of the core "wchar_t" data-type
   int4 sizeOfPointer;		///< Size of pointers (into default data address space)
   int4 sizeOfAltPointer;	///< Size of alternate pointers used by architecture (if not 0)
   int4 enumsize;		///< Size of an enumerated type
@@ -691,6 +715,7 @@ class TypeFactory {
   Datatype *typecache10;	///< Specially cached 10-byte float type
   Datatype *typecache16;	///< Specially cached 16-byte float type
   Datatype *type_nochar;	///< Same dimensions as char but acts and displays as an INT
+  Datatype *charcache[5];	///< Cached character data-types
   Datatype *findNoName(Datatype &ct);	///< Find data-type (in this container) by function
   void insert(Datatype *newtype);	///< Insert pointer into the cross-reference sets
   Datatype *findAdd(Datatype &ct);	///< Find data-type in this container or add it
@@ -721,14 +746,16 @@ public:
   int4 getPrimitiveAlignSize(uint4 size) const;	///< Get the aligned size of a primitive data-type
   int4 getSizeOfInt(void) const { return sizeOfInt; }	///< Get the size of the default "int"
   int4 getSizeOfLong(void) const { return sizeOfLong; }	///< Get the size of the default "long"
+  int4 getSizeOfChar(void) const { return sizeOfChar; }	///< Get the size of the default "char"
+  int4 getSizeOfWChar(void) const { return sizeOfWChar; }	///< Get the size of the default "wchar_t"
   int4 getSizeOfPointer(void) const { return sizeOfPointer; }	///< Get the size of pointers
   int4 getSizeOfAltPointer(void) const { return sizeOfAltPointer; }	///< Get size of alternate pointers (or 0)
   Architecture *getArch(void) const { return glb; }	///< Get the Architecture object
   Datatype *findByName(const string &n);		///< Return type of given name
   Datatype *setName(Datatype *ct,const string &n); 	///< Set the given types name
   void setDisplayFormat(Datatype *ct,uint4 format);	///< Set the display format associated with the given data-type
-  bool setFields(vector<TypeField> &fd,TypeStruct *ot,int4 fixedsize,uint4 flags);	///< Set fields on a TypeStruct
-  bool setFields(vector<TypeField> &fd,TypeUnion *ot,int4 fixedsize,uint4 flags);	///< Set fields on a TypeUnion
+  void setFields(vector<TypeField> &fd,TypeStruct *ot,int4 fixedsize,int4 fixedalign,uint4 flags);	///< Set fields on a TypeStruct
+  void setFields(vector<TypeField> &fd,TypeUnion *ot,int4 fixedsize,int4 fixedalign,uint4 flags);	///< Set fields on a TypeUnion
   void setPrototype(const FuncProto *fp,TypeCode *newCode,uint4 flags);	///< Set the prototype on a TypeCode
   bool setEnumValues(const vector<string> &namelist,
 		      const vector<uintb> &vallist,
@@ -740,6 +767,7 @@ public:
   Datatype *getBaseNoChar(int4 s,type_metatype m);		///< Get atomic type excluding "char"
   Datatype *getBase(int4 s,type_metatype m);			///< Get atomic type
   Datatype *getBase(int4 s,type_metatype m,const string &n);	///< Get named atomic type
+  Datatype *getTypeChar(int4 s);				///< Get a character data-type by size
   TypeCode *getTypeCode(void);					///< Get an "anonymous" function data-type
   TypePointer *getTypePointerStripArray(int4 s,Datatype *pt,uint4 ws);	///< Construct a pointer data-type, stripping an ARRAY level
   TypePointer *getTypePointer(int4 s,Datatype *pt,uint4 ws);	///< Construct an absolute pointer data-type
@@ -752,9 +780,7 @@ public:
   TypePartialUnion *getTypePartialUnion(TypeUnion *contain,int4 off,int4 sz);	///< Create a partial union
   TypeEnum *getTypeEnum(const string &n);			///< Create an (empty) enumeration
   TypeSpacebase *getTypeSpacebase(AddrSpace *id,const Address &addr);	///< Create a "spacebase" type
-  TypeCode *getTypeCode(ProtoModel *model,Datatype *outtype,
-			const vector<Datatype *> &intypes,
-			bool dotdotdot);			///< Create a "function" datatype
+  TypeCode *getTypeCode(const PrototypePieces &proto);			///< Create a "function" datatype
   Datatype *getTypedef(Datatype *ct,const string &name,uint8 id,uint4 format);	///< Create a new \e typedef data-type
   TypePointerRel *getTypePointerRel(TypePointer *parentPtr,Datatype *ptrTo,int4 off);	///< Get pointer offset relative to a container
   TypePointerRel *getTypePointerRel(int4 sz,Datatype *parent,Datatype *ptrTo,int4 ws,int4 off,const string &nm);

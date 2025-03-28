@@ -46,6 +46,11 @@ public class DefaultTerminal implements Terminal {
 	}
 
 	@Override
+	public boolean isTerminated() {
+		return provider.isTerminated();
+	}
+
+	@Override
 	public void addTerminalListener(TerminalListener listener) {
 		provider.addTerminalListener(listener);
 	}
@@ -133,5 +138,10 @@ public class DefaultTerminal implements Terminal {
 	@Override
 	public void setTerminateAction(Runnable action) {
 		Swing.runIfSwingOrRunLater(() -> provider.setTerminateAction(action));
+	}
+
+	@Override
+	public void toFront() {
+		provider.toFront();
 	}
 }

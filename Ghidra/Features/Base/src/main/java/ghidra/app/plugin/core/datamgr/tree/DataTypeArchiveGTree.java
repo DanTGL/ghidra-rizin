@@ -74,6 +74,8 @@ public class DataTypeArchiveGTree extends GTree {
 		}
 
 		addTreeExpansionListener(cleanupListener);
+
+		setAccessibleNamePrefix("Data Type Manager");
 	}
 
 	private int getHeight(GTreeNode rootNode, DataTypeTreeRenderer renderer) {
@@ -176,6 +178,30 @@ public class DataTypeArchiveGTree extends GTree {
 		reloadTree();
 	}
 
+	/**
+	 * Signals to this tree that it should configure itself for use inside of a widget that allows
+	 * the user to choose a data type.
+	 */
+	public void updateFilterForChoosingDataType() {
+
+		// Only filter on the name so that any extra display text will not cause a filter failure
+		// when attempting to pick a type by its name.
+		boolean filterOnNameOnly = true;
+		boolean includeMembers = false;
+
+		DefaultDtTreeDataTransformer transformer;
+		if (includeMembers) {
+			transformer = new DataTypeTransformer(filterOnNameOnly);
+		}
+		else {
+			transformer = new DefaultDtTreeDataTransformer(filterOnNameOnly);
+		}
+
+		setDataTransformer(transformer);
+
+		reloadTree();
+	}
+
 	public Program getProgram() {
 		return plugin.getProgram();
 	}
@@ -261,6 +287,7 @@ public class DataTypeArchiveGTree extends GTree {
 // Inner Classes
 //==================================================================================================
 
+	/** Only filters on name or display name, not dt contents */
 	private class DefaultDtTreeDataTransformer extends DefaultGTreeDataTransformer {
 
 		private boolean filterOnNameOnly;
@@ -274,10 +301,11 @@ public class DataTypeArchiveGTree extends GTree {
 			if (filterOnNameOnly) {
 				return node.getName(); // the node name is the type name
 			}
-			return super.toString(node);
+			return super.toString(node); // display text
 		}
 	}
 
+	/** Filters on dt contents */
 	private class DataTypeTransformer extends DefaultDtTreeDataTransformer {
 
 		DataTypeTransformer(boolean filterOnNameOnly) {
@@ -360,7 +388,6 @@ public class DataTypeArchiveGTree extends GTree {
 	}
 
 	private class DataTypeTreeRenderer extends GTreeRenderer {
-		private static final int ICON_WIDTH = 24;
 		private static final int ICON_HEIGHT = 18;
 
 		@Override

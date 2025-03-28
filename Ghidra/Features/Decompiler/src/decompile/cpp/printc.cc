@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -30,6 +30,10 @@ OpToken PrintC::bitwise_not = { "~", "", 1, 62, false, OpToken::unary_prefix, 0,
 OpToken PrintC::boolean_not = { "!", "", 1, 62, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
 OpToken PrintC::unary_minus = { "-", "", 1, 62, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
 OpToken PrintC::unary_plus = { "+", "", 1, 62, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
+OpToken PrintC::pre_increment = { "++", "",  1, 66, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
+OpToken PrintC::pre_decrement = { "--", "", 1, 66, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
+OpToken PrintC::post_increment = { "++", "", 1, 66, false, OpToken::unary_postfix, 0, 0, (OpToken *)0 };
+OpToken PrintC::post_decrement = { "--", "", 1, 66, false, OpToken::unary_postfix, 0, 0, (OpToken *)0 };
 OpToken PrintC::addressof = { "&", "", 1, 62, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
 OpToken PrintC::dereference = { "*", "", 1, 62, false, OpToken::unary_prefix, 0, 0, (OpToken *)0 };
 OpToken PrintC::typecast = { "(", ")", 2, 62, false, OpToken::presurround, 0, 0, (OpToken *)0 };
@@ -132,6 +136,14 @@ PrintC::PrintC(Architecture *g,const string &nm) : PrintLanguage(g,nm)
   greater_equal.negate = &less_than;
   equal.negate = &not_equal;
   not_equal.negate = &equal;
+  
+  // Set the swap tokens
+  less_than.lrswap = &greater_than;
+  less_equal.lrswap = &greater_equal;
+  greater_than.lrswap = &less_than;
+  greater_equal.lrswap = &less_equal;
+  equal.lrswap = &equal;
+  not_equal.lrswap = &not_equal;
 
   castStrategy = new CastStrategyC();
   resetDefaultsPrintC();
@@ -676,15 +688,7 @@ void PrintC::opCallother(const PcodeOp *op)
 {
   UserPcodeOp *userop = glb->userops.getOp(op->getIn(0)->getOffset());
   uint4 display = userop->getDisplay();
-  if (display == UserPcodeOp::annotation_assignment) {
-    pushOp(&assignment,op);
-    pushVn(op->getIn(2),op,mods);
-    pushVn(op->getIn(1),op,mods);
-  }
-  else if (display == UserPcodeOp::no_operator) {
-    pushVn(op->getIn(1),op,mods);
-  }
-  else {	// Emit using functional syntax
+  if (display == 0) {	// Emit using functional syntax
     string nm = op->getOpcode()->getOperatorName(op);
     pushOp(&function_call,op);
     pushAtom(Atom(nm,optoken,EmitMarkup::funcname_color,op));
@@ -698,6 +702,28 @@ void PrintC::opCallother(const PcodeOp *op)
     }
     else
       pushAtom(Atom(EMPTY_STRING,blanktoken,EmitMarkup::no_color));	// Push empty token for void
+  }
+  else if (display == UserPcodeOp::annotation_assignment) {
+    pushOp(&assignment,op);
+    pushVn(op->getIn(2),op,mods);
+    pushVn(op->getIn(1),op,mods);
+  }
+  else if (display == UserPcodeOp::no_operator) {
+    pushVn(op->getIn(1),op,mods);
+  }
+  else if (display == UserPcodeOp::display_string) {
+    const Varnode *vn = op->getOut();
+    Datatype *ct = vn->getType();
+    ostringstream str;
+    if (ct->getMetatype() == TYPE_PTR) {
+      ct = ((TypePointer *)ct)->getPtrTo();
+      if (!printCharacterConstant(str,op->getIn(1)->getAddr(),ct))
+	str << "\"badstring\"";
+    }
+    else
+      str << "\"badstring\"";
+
+    pushAtom(Atom(str.str(),vartoken,EmitMarkup::const_color,op,vn));
   }
 }
 
@@ -812,6 +838,19 @@ void PrintC::opBoolNegate(const PcodeOp *op)
     pushOp(&boolean_not,op);	// Otherwise print ourselves
     pushVn(op->getIn(0),op,mods); // And print our input
   }
+}
+
+void PrintC::opFloatInt2Float(const PcodeOp *op)
+
+{
+  const PcodeOp *zextOp = TypeOpFloatInt2Float::absorbZext(op);
+  const Varnode *vn0 = (zextOp != (const PcodeOp *)0) ? zextOp->getIn(0) : op->getIn(0);
+  Datatype *dt = op->getOut()->getHighTypeDefFacing();
+  if (!option_nocasts) {
+    pushOp(&typecast,op);
+    pushType(dt);
+  }
+  pushVn(vn0,op,mods);
 }
 
 void PrintC::opSubpiece(const PcodeOp *op)
@@ -1375,19 +1414,11 @@ void PrintC::push_float(uintb val,int4 sz,tagtype tag,const Varnode *vn,const Pc
 	token = "NAN";
     }
     else {
-      ostringstream t;
       if ((mods & force_scinote)!=0) {
-	t.setf( ios::scientific ); // Set to scientific notation
-	t.precision(format->getDecimalPrecision()-1);
-	t << floatval;
-	token = t.str();
+	token = format->printDecimal(floatval, true);
       }
       else {
-	// Try to print "minimal" accurate representation of the float
-	t.unsetf( ios::floatfield );	// Use "default" notation
-	t.precision(format->getDecimalPrecision());
-	t << floatval;
-	token = t.str();
+	token = format->printDecimal(floatval, false);
 	bool looksLikeFloat = false;
 	for(int4 i=0;i<token.size();++i) {
 	  char c = token[i];
@@ -1569,10 +1600,10 @@ void PrintC::resetDefaultsPrintC(void)
   option_nocasts = false;
   option_NULL = false;
   option_unplaced = false;
-  option_space_after_comma = false;
-  option_newline_before_else = true;
-  option_newline_before_opening_brace = false;
-  option_newline_after_prototype = true;
+  option_brace_func = Emit::skip_line;
+  option_brace_ifelse = Emit::same_line;
+  option_brace_loop = Emit::same_line;
+  option_brace_switch = Emit::same_line;
   setCStyleComments();
 }
 
@@ -1956,7 +1987,6 @@ void PrintC::pushPartialSymbol(const Symbol *sym,int4 off,int4 sz,
 	entry.token = &object_member;
 	entry.field = field;
 	entry.parent = ct;
-	entry.fieldname = field->name;
 	entry.hilite = EmitMarkup::no_color;
 	ct = field->type;
 	succeeded = true;
@@ -1969,9 +1999,8 @@ void PrintC::pushPartialSymbol(const Symbol *sym,int4 off,int4 sz,
 	stack.emplace_back();
 	PartialSymbolEntry &entry( stack.back() );
 	entry.token = &subscript;
-	ostringstream s;
-	s << dec << el;
-	entry.fieldname = s.str();
+	entry.offset = el;
+	entry.size = 0;
 	entry.field = (const TypeField *)0;
 	entry.hilite = EmitMarkup::const_color;
 	ct = arrayof;
@@ -1988,7 +2017,6 @@ void PrintC::pushPartialSymbol(const Symbol *sym,int4 off,int4 sz,
 	entry.token = &object_member;
 	entry.field = field;
 	entry.parent = ct;
-	entry.fieldname = entry.field->name;
 	entry.hilite = EmitMarkup::no_color;
 	ct = field->type;
 	succeeded = true;
@@ -1998,8 +2026,10 @@ void PrintC::pushPartialSymbol(const Symbol *sym,int4 off,int4 sz,
     }
     else if (inslot >= 0) {
       Datatype *outtype = vn->getHigh()->getType();
-      if (castStrategy->isSubpieceCastEndian(outtype,ct,off,
-					     sym->getFirstWholeMap()->getAddr().getSpace()->isBigEndian())) {
+      AddrSpace *spc = sym->getFirstWholeMap()->getAddr().getSpace();
+      if (spc == (AddrSpace *)0)
+	spc = vn->getSpace();
+      if (castStrategy->isSubpieceCastEndian(outtype,ct,off,spc->isBigEndian())) {
 	// Treat truncation as SUBPIECE style cast
 	finalcast = outtype;
 	ct = (Datatype*)0;
@@ -2012,7 +2042,8 @@ void PrintC::pushPartialSymbol(const Symbol *sym,int4 off,int4 sz,
       entry.token = &object_member;
       if (sz == 0)
 	sz = ct->getSize() - off;
-      entry.fieldname = unnamedField(off, sz);	// If nothing else works, generate artificial field name
+      entry.offset = off;	// Generate artificial name, based on offset and size of entry
+      entry.size = sz;
       entry.field = (const TypeField *)0;
       entry.hilite = EmitMarkup::no_color;
       ct = (Datatype *)0;
@@ -2028,11 +2059,17 @@ void PrintC::pushPartialSymbol(const Symbol *sym,int4 off,int4 sz,
     pushOp(stack[i].token,op);
   pushSymbol(sym,vn,op);	// Push base symbol name
   for(int4 i=0;i<stack.size();++i) {
-    const TypeField *field = stack[i].field;
-    if (field == (const TypeField *)0)
-      pushAtom(Atom(stack[i].fieldname,syntax,stack[i].hilite,op));
+    PartialSymbolEntry &entry (stack[i]);
+    if (entry.field == (const TypeField *)0) {
+      if (entry.size <= 0)
+	push_integer(entry.offset, entry.size, (entry.offset < 0), syntax, (Varnode *)0, op);
+      else {
+	string field = unnamedField(entry.offset,entry.size);
+	pushAtom(Atom(field,syntax,entry.hilite,op));
+      }
+    }
     else
-      pushAtom(Atom(stack[i].fieldname,fieldtoken,stack[i].hilite,stack[i].parent,field->ident,op));
+      pushAtom(Atom(entry.field->name,fieldtoken,stack[i].hilite,stack[i].parent,entry.field->ident,op));
   }
 }
 
@@ -2101,9 +2138,7 @@ void PrintC::emitStructDefinition(const TypeStruct *ct)
 
   emit->tagLine();
   emit->print("typedef struct",EmitMarkup::keyword_color);
-  emit->spaces(1);
-  int4 id = emit->startIndent();
-  emit->print(OPEN_CURLY);
+  int4 id = emit->openBraceIndent(OPEN_CURLY, Emit::same_line);
   emit->tagLine();
   iter = ct->beginField();
   while(iter!=ct->endField()) {
@@ -2119,9 +2154,7 @@ void PrintC::emitStructDefinition(const TypeStruct *ct)
       emit->tagLine();
     }
   }
-  emit->stopIndent(id);
-  emit->tagLine();
-  emit->print(CLOSE_CURLY);
+  emit->closeBraceIndent(CLOSE_CURLY, id);
   emit->spaces(1);
   emit->print(ct->getDisplayName());
   emit->print(SEMICOLON);
@@ -2143,9 +2176,7 @@ void PrintC::emitEnumDefinition(const TypeEnum *ct)
   bool sign = (ct->getMetatype() == TYPE_INT);
   emit->tagLine();
   emit->print("typedef enum",EmitMarkup::keyword_color);
-  emit->spaces(1);
-  int4 id = emit->startIndent();
-  emit->print(OPEN_CURLY);
+  int4 id = emit->openBraceIndent(OPEN_CURLY, Emit::same_line);
   emit->tagLine();
   iter = ct->beginEnum();
   while(iter!=ct->endEnum()) {
@@ -2161,9 +2192,7 @@ void PrintC::emitEnumDefinition(const TypeEnum *ct)
       emit->tagLine();
   }
   popMod();
-  emit->stopIndent(id);
-  emit->tagLine();
-  emit->print(CLOSE_CURLY);
+  emit->closeBraceIndent(CLOSE_CURLY, id);
   emit->spaces(1);
   emit->print(ct->getDisplayName());
   emit->print(SEMICOLON);
@@ -2402,6 +2431,44 @@ void PrintC::docTypeDefinitions(const TypeFactory *typegrp)
   }
 }
 
+/// Check that the given p-code can be simplified to a C increment or decrement operator.
+/// \param op is the given PcodeOp
+bool PrintC::emitIncDecOp(const PcodeOp *op)
+
+{
+  const OpToken * token;
+  enum OpCode opcode = op->code();
+
+  if (opcode != CPUI_INT_ADD && opcode != CPUI_INT_SUB) return false;
+
+  // is operation modifying inplace?
+  const Varnode *vn = op->getIn(0);
+  if (op->getOut()->getHigh() != vn->getHigh()) return false;
+
+  // get add/sub value
+  const Varnode *value = op->getIn(1);
+
+  if (!value->isConstant()) return false;
+
+  int4 num = (int4)value->getAddr().getOffset();
+
+  // invert subtraction
+  if (opcode == CPUI_INT_SUB)
+    num = -num;
+
+  if (num == 1) {
+    token = &post_increment;
+  } else if (num == -1) {
+    token = &post_decrement;
+  } else {
+    return false;
+  }
+
+  pushOp(token,op);
+  pushVnExplicit(vn,op);
+  return true;
+}
+
 /// Check that the given p-code op has an \e in-place token form and if the first input and the output
 /// are references to  the same variable. If so, emit the expression using the \e in-place token.
 /// \param op is the given PcodeOp
@@ -2410,12 +2477,20 @@ bool PrintC::emitInplaceOp(const PcodeOp *op)
 
 {
   OpToken *tok;
+
+  const HighVariable *outHigh = op->getOut()->getHigh();
+
+  if (op->code() == CPUI_COPY && op->getIn(0)->getDef() != (const PcodeOp *)0) {
+    op = op->getIn(0)->getDef();
+  }
   switch(op->code()) {
   case CPUI_INT_MULT:
+  case CPUI_FLOAT_MULT:
     tok = &multequal;
     break;
   case CPUI_INT_DIV:
   case CPUI_INT_SDIV:
+  case CPUI_FLOAT_DIV:
     tok = &divequal;
     break;
   case CPUI_INT_REM:
@@ -2423,9 +2498,13 @@ bool PrintC::emitInplaceOp(const PcodeOp *op)
     tok = &remequal;
     break;
   case CPUI_INT_ADD:
+  case CPUI_PTRADD:
+  case CPUI_FLOAT_ADD:
     tok = &plusequal;
     break;
   case CPUI_INT_SUB:
+  case CPUI_PTRSUB:
+  case CPUI_FLOAT_SUB:
     tok = &minusequal;
     break;
   case CPUI_INT_LEFT:
@@ -2448,7 +2527,7 @@ bool PrintC::emitInplaceOp(const PcodeOp *op)
     return false;
   }
   const Varnode *vn = op->getIn(0);
-  if (op->getOut()->getHigh() != vn->getHigh()) return false;
+  if (outHigh != vn->getHigh()) return false;
   pushOp(tok,op);
   pushVnExplicit(vn,op);
   pushVn(op->getIn(1),op,mods);
@@ -2461,6 +2540,7 @@ void PrintC::emitExpression(const PcodeOp *op)
 {
   const Varnode *outvn = op->getOut();
   if (outvn != (Varnode *)0) {
+    if (option_inplace_ops && emitIncDecOp(op)) return;
     if (option_inplace_ops && emitInplaceOp(op)) return;
     pushOp(&assignment,op);
     pushSymbolDetail(outvn,op,false);
@@ -2646,21 +2726,14 @@ void PrintC::docFunction(const Funcdata *fd)
     emitCommentFuncHeader(fd);
     emit->tagLine();
     emitFunctionDeclaration(fd);	// Causes us to enter function's scope
-    emit->tagLine();
-    if (option_newline_after_prototype) {
-      emit->tagLine();
-    }
-    int4 id = emit->startIndent();
-    emit->print(OPEN_CURLY);
+    int4 id = emit->openBraceIndent(OPEN_CURLY, option_brace_func);
     emitLocalVarDecls(fd);
     if (isSet(flat))
       emitBlockGraph(&fd->getBasicBlocks());
     else
       emitBlockGraph(&fd->getStructure());
     popScope();				// Exit function's scope
-    emit->stopIndent(id);
-    emit->tagLine();
-    emit->print(CLOSE_CURLY);
+    emit->closeBraceIndent(CLOSE_CURLY, id);
     emit->tagLine();
     emit->endFunction(id1);
     emit->flush();
@@ -2845,7 +2918,33 @@ void PrintC::emitBlockCondition(const BlockCondition *bl)
     return;
   }
   if (isSet(only_branch) || isSet(comma_separate)) {
-    int4 id = emit->openParen(OPEN_PAREN);
+    // TODO: Test if this works properly with comma-lists...
+    bool outer_parens = true;
+    if (bl->getParent()->getType() == FlowBlock::block_type::t_condition) {
+      // We're emitting inside another BlockCondition. If that has the same
+      // operator, don't emit outer parentheses to avoid extra nesting levels.
+      // Alternatively, if we're the second child of our parent BlockCondition,
+      // the parent has already placed parentheses around us, so we don't need
+      // another layer.
+      BlockCondition *parent = (BlockCondition *) bl->getParent();
+      if (parent->getOpcode() == bl->getOpcode()) {
+        outer_parens = false;
+      }
+      if (parent->getBlock(1) == bl) {
+        outer_parens = false;
+      }
+    } else if (bl->getParent()->getType() == FlowBlock::block_type::t_whiledo) {
+      // We're emitting inside a BlockWhileDo. If this is actually a for-loop,
+      // characterised by 'getIterateOp()' not returning null, and this is the
+      // condition block, don't print outer parens either.
+      BlockWhileDo *parent = (BlockWhileDo *) bl->getParent();
+      if ((parent->getIterateOp() != (PcodeOp *)0) && (parent->getBlock(0) == bl)) {
+        outer_parens = false;
+      }
+    }
+    int4 id = -1;
+    if (outer_parens)
+      id = emit->openParen(OPEN_PAREN);
     bl->getBlock(0)->emit(this);
     pushMod();
     unsetMod(only_branch);
@@ -2866,22 +2965,22 @@ void PrintC::emitBlockCondition(const BlockCondition *bl)
     bl->getBlock(1)->emit(this);
     emit->closeParen(CLOSE_PAREN,id2);
     popMod();
-    emit->closeParen(CLOSE_PAREN,id);
+    if (outer_parens)
+      emit->closeParen(CLOSE_PAREN,id);
   }
 }
 
 void PendingBrace::callback(Emit *emit)
 
 {
-  emit->print(PrintC::OPEN_CURLY);
-  indentId = emit->startIndent();
+  indentId = emit->openBraceIndent(PrintC::OPEN_CURLY, style);
 }
 
 void PrintC::emitBlockIf(const BlockIf *bl)
 
 {
   const PcodeOp *op;
-  PendingBrace pendingBrace;
+  PendingBrace pendingBrace(option_brace_ifelse);
 
   if (isSet(pending_brace))
     emit->setPendingPrint(&pendingBrace);
@@ -2899,8 +2998,10 @@ void PrintC::emitBlockIf(const BlockIf *bl)
   condBlock->emit(this);
   popMod();
   emitCommentBlockTree(condBlock);
-  if (emit->hasPendingPrint(&pendingBrace))	// If we issued a brace but it did not emit
+  if (emit->hasPendingPrint(&pendingBrace)) {	// If we issued a brace but it did not emit
     emit->cancelPendingPrint();			// Cancel the brace in order to have "else if" syntax
+    emit->spaces(1);
+  }
   else
     emit->tagLine();				// Otherwise start the "if" on a new line
 
@@ -2917,19 +3018,11 @@ void PrintC::emitBlockIf(const BlockIf *bl)
   }
   else {
     setMod(no_branch);
-    if (!option_newline_before_opening_brace) {
-      emit->spaces(1);
-    } else {
-      emit->tagLine();
-    }
-    int4 id = emit->startIndent();
-    emit->print(OPEN_CURLY);
+    int4 id = emit->openBraceIndent(OPEN_CURLY, option_brace_ifelse);
     int4 id1 = emit->beginBlock(bl->getBlock(1));
     bl->getBlock(1)->emit(this);
     emit->endBlock(id1);
-    emit->stopIndent(id);
-    emit->tagLine();
-    emit->print(CLOSE_CURLY);
+    emit->closeBraceIndent(CLOSE_CURLY, id);
     if (bl->getSize() == 3) {
       if (option_newline_before_else) {
 	emit->tagLine();
@@ -2937,11 +3030,6 @@ void PrintC::emitBlockIf(const BlockIf *bl)
 	emit->spaces(1);
       }
       emit->print(KEYWORD_ELSE,EmitMarkup::keyword_color);
-      if (option_newline_before_opening_brace) {
-	emit->tagLine();
-      } else {
-	emit->spaces(1);
-      }
       FlowBlock *elseBlock = bl->getBlock(2);
       if (elseBlock->getType() == FlowBlock::t_if) {
 	// Attempt to merge the "else" and "if" syntax
@@ -2951,22 +3039,17 @@ void PrintC::emitBlockIf(const BlockIf *bl)
 	emit->endBlock(id2);
       }
       else {
-	int4 id2 = emit->startIndent();
-	emit->print(OPEN_CURLY);
+	int4 id2 = emit->openBraceIndent(OPEN_CURLY, option_brace_ifelse);
 	int4 id3 = emit->beginBlock(elseBlock);
 	elseBlock->emit(this);
 	emit->endBlock(id3);
-	emit->stopIndent(id2);
-	emit->tagLine();
-	emit->print(CLOSE_CURLY);
+	emit->closeBraceIndent(CLOSE_CURLY, id2);
       }
     }
   }
   popMod();
   if (pendingBrace.getIndentId() >= 0) {
-    emit->stopIndent(pendingBrace.getIndentId());
-    emit->tagLine();
-    emit->print(CLOSE_CURLY);
+    emit->closeBraceIndent(CLOSE_CURLY, pendingBrace.getIndentId());
   }
 }
 
@@ -3011,16 +3094,12 @@ void PrintC::emitForLoop(const BlockWhileDo *bl)
   emit->endStatement(id4);
   popMod();
   emit->closeParen(CLOSE_PAREN,id1);
-  emit->spaces(1);
-  indent = emit->startIndent();
-  emit->print(OPEN_CURLY);
+  indent = emit->openBraceIndent(OPEN_CURLY, option_brace_loop);
   setMod(no_branch); // Dont print goto at bottom of clause
   int4 id2 = emit->beginBlock(bl->getBlock(1));
   bl->getBlock(1)->emit(this);
   emit->endBlock(id2);
-  emit->stopIndent(indent);
-  emit->tagLine();
-  emit->print(CLOSE_CURLY);
+  emit->closeBraceIndent(CLOSE_CURLY, indent);
   popMod();
 }
 
@@ -3052,9 +3131,7 @@ void PrintC::emitBlockWhileDo(const BlockWhileDo *bl)
     emit->print(KEYWORD_TRUE,EmitMarkup::const_color);
     emit->spaces(1);
     emit->closeParen(CLOSE_PAREN,id1);
-    emit->spaces(1);
-    indent = emit->startIndent();
-    emit->print(OPEN_CURLY);
+    indent = emit->openBraceIndent(OPEN_CURLY, option_brace_loop);
     pushMod();
     setMod(no_branch);
     condBlock->emit(this);
@@ -3083,17 +3160,13 @@ void PrintC::emitBlockWhileDo(const BlockWhileDo *bl)
     condBlock->emit(this);
     popMod();
     emit->closeParen(CLOSE_PAREN,id1);
-    emit->spaces(1);
-    indent = emit->startIndent();
-    emit->print(OPEN_CURLY);
+    indent = emit->openBraceIndent(OPEN_CURLY, option_brace_loop);
   }
   setMod(no_branch); // Dont print goto at bottom of clause
   int4 id2 = emit->beginBlock(bl->getBlock(1));
   bl->getBlock(1)->emit(this);
   emit->endBlock(id2);
-  emit->stopIndent(indent);
-  emit->tagLine();
-  emit->print(CLOSE_CURLY);
+  emit->closeBraceIndent(CLOSE_CURLY, indent);
   popMod();
 }
 
@@ -3108,22 +3181,14 @@ void PrintC::emitBlockDoWhile(const BlockDoWhile *bl)
   emitAnyLabelStatement(bl);
   emit->tagLine();
   emit->print(KEYWORD_DO,EmitMarkup::keyword_color);
-  if (option_newline_before_opening_brace) {
-    emit->tagLine();
-  } else {
-    emit->spaces(1);
-  }
-  int4 id = emit->startIndent();
-  emit->print(OPEN_CURLY);
+  int4 id = emit->openBraceIndent(OPEN_CURLY, option_brace_loop);
   pushMod();
   int4 id2 = emit->beginBlock(bl->getBlock(0));
   setMod(no_branch);
   bl->getBlock(0)->emit(this);
   emit->endBlock(id2);
   popMod();
-  emit->stopIndent(id);
-  emit->tagLine();
-  emit->print(CLOSE_CURLY);
+  emit->closeBraceIndent(CLOSE_CURLY, id);
   emit->spaces(1);
   op = bl->getBlock(0)->lastOp();
   emit->tagOp(KEYWORD_WHILE,EmitMarkup::keyword_color,op);
@@ -3144,19 +3209,11 @@ void PrintC::emitBlockInfLoop(const BlockInfLoop *bl)
   emitAnyLabelStatement(bl);
   emit->tagLine();
   emit->print(KEYWORD_DO,EmitMarkup::keyword_color);
-  if (option_newline_before_opening_brace) {
-    emit->tagLine();
-  } else {
-    emit->spaces(1);
-  }
-  int4 id = emit->startIndent();
-  emit->print(OPEN_CURLY);
+  int4 id = emit->openBraceIndent(OPEN_CURLY, option_brace_loop);
   int4 id1 = emit->beginBlock(bl->getBlock(0));
   bl->getBlock(0)->emit(this);
   emit->endBlock(id1);
-  emit->stopIndent(id);
-  emit->tagLine();
-  emit->print(CLOSE_CURLY);
+  emit->closeBraceIndent(CLOSE_CURLY, id);
   emit->spaces(1);
   op = bl->getBlock(0)->lastOp();
   emit->tagOp(KEYWORD_WHILE,EmitMarkup::keyword_color,op);
@@ -3378,8 +3435,7 @@ void PrintC::emitBlockSwitch(const BlockSwitch *bl)
   setMod(only_branch|comma_separate);
   bl->getSwitchBlock()->emit(this);
   popMod();
-  emit->spaces(1);
-  emit->print(OPEN_CURLY);
+  emit->openBrace(OPEN_CURLY,option_brace_switch);
 
   for(int4 i=0;i<bl->getNumCaseBlocks();++i) {
     emitSwitchCase(i,bl);

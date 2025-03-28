@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -16,14 +16,16 @@
 package ghidra.app.plugin.core.debug.service.model;
 
 import java.util.*;
+import java.util.Map.Entry;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.function.Predicate;
+import java.util.stream.Collectors;
 
 import docking.ActionContext;
 import ghidra.app.context.ProgramLocationActionContext;
-import ghidra.app.plugin.core.debug.gui.model.DebuggerObjectActionContext;
+import ghidra.app.plugin.core.debug.gui.objects.components.DebuggerMethodInvocationDialog;
 import ghidra.app.plugin.core.debug.service.target.AbstractTarget;
 import ghidra.app.services.DebuggerConsoleService;
 import ghidra.app.services.DebuggerTraceManagerService;
@@ -38,7 +40,8 @@ import ghidra.dbg.target.TargetMethod.TargetParameterMap;
 import ghidra.dbg.target.TargetSteppable.TargetStepKind;
 import ghidra.dbg.util.PathMatcher;
 import ghidra.dbg.util.PathPredicates;
-import ghidra.debug.api.model.TraceRecorder;
+import ghidra.debug.api.ValStr;
+import ghidra.debug.api.model.*;
 import ghidra.debug.api.target.ActionName;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
 import ghidra.framework.plugintool.PluginTool;
@@ -91,6 +94,12 @@ public class TraceRecorderTarget extends AbstractTarget {
 	}
 
 	@Override
+	public String describe() {
+		return "%s in %s (recorder)".formatted(getTrace().getDomainFile().getName(),
+			recorder.getTarget().getModel().getBrief());
+	}
+
+	@Override
 	public boolean isValid() {
 		return recorder.isRecording();
 	}
@@ -111,6 +120,13 @@ public class TraceRecorderTarget extends AbstractTarget {
 				return null;
 			}
 			return iface.cast(recorder.getTargetObject(suitable));
+		}
+		else if (context instanceof DebuggerSingleObjectPathActionContext ctx) {
+			TargetObject targetObject = recorder.getTargetObject(ctx.getPath());
+			if (targetObject == null) {
+				return null;
+			}
+			return targetObject.getCachedSuitable(iface);
 		}
 		return null;
 	}
@@ -176,6 +192,14 @@ public class TraceRecorderTarget extends AbstractTarget {
 	}
 
 	private record MethodWithArgs(TargetMethod method, Map<String, Object> arguments) {
+		public boolean requiresPrompt() {
+			for (ParameterDescription<?> param : method.getParameters().values()) {
+				if (param.required && !arguments.containsKey(param.name)) {
+					return true;
+				}
+			}
+			return false;
+		}
 	}
 
 	private List<MethodWithArgs> findAddressMethods(ProgramLocationActionContext context) {
@@ -215,23 +239,45 @@ public class TraceRecorderTarget extends AbstractTarget {
 		return method.getName();
 	}
 
-	private ActionEntry makeEntry(TargetMethod method, Map<String, ?> arguments) {
-		return new ActionEntry(method.getDisplay(), null, null, false, () -> true, () -> {
-			return method.invoke(arguments).thenAccept(result -> {
-				DebuggerConsoleService consoleService =
-					tool.getService(DebuggerConsoleService.class);
-				if (consoleService != null && method.getReturnType() != Void.class) {
-					consoleService.log(null, getDisplay(method) + " returned " + result);
-				}
-			});
+	private Map<String, ?> promptArgs(TargetMethod method, Map<String, ?> defaults) {
+		Map<String, ValStr<?>> defs = ValStr.fromPlainMap(defaults);
+		DebuggerMethodInvocationDialog dialog = new DebuggerMethodInvocationDialog(tool,
+			method.getDisplay(), method.getDisplay(), null);
+
+		Map<String, ValStr<?>> args = dialog.promptArguments(method.getParameters(), defs, defs);
+		return args == null ? null : ValStr.toPlainMap(args);
+	}
+
+	private CompletableFuture<?> invokeMethod(boolean prompt, TargetMethod method,
+			Map<String, ?> arguments) {
+		Map<String, ?> chosenArgs;
+		if (prompt) {
+			chosenArgs = promptArgs(method, arguments);
+		}
+		else {
+			chosenArgs = arguments;
+		}
+		return method.invoke(chosenArgs).thenAccept(result -> {
+			DebuggerConsoleService consoleService =
+				tool.getService(DebuggerConsoleService.class);
+			if (consoleService != null && method.getReturnType() != Void.class) {
+				consoleService.log(null, getDisplay(method) + " returned " + result);
+			}
 		});
+	}
+
+	private ActionEntry makeEntry(boolean requiresPrompt, TargetMethod method,
+			Map<String, ?> arguments) {
+		return new ActionEntry(method.getDisplay(), null, null, requiresPrompt,
+			method.getPath().size(), () -> true, prompt -> invokeMethod(prompt, method, arguments));
 	}
 
 	@Override
 	public Map<String, ActionEntry> collectAddressActions(ProgramLocationActionContext context) {
 		Map<String, ActionEntry> result = new HashMap<>();
 		for (MethodWithArgs mwa : findAddressMethods(context)) {
-			result.put(mwa.method.getJoinedPath("."), makeEntry(mwa.method, mwa.arguments));
+			result.put(mwa.method.getJoinedPath("."),
+				makeEntry(mwa.requiresPrompt(), mwa.method, mwa.arguments));
 		}
 		return result;
 	}
@@ -244,7 +290,7 @@ public class TraceRecorderTarget extends AbstractTarget {
 			return Map.of();
 		}
 		return Map.of(display, new ActionEntry(display, name, description, false,
-			() -> enabled.test(object), () -> action.apply(object)));
+			object.getPath().size(), () -> enabled.test(object), prompt -> action.apply(object)));
 	}
 
 	private TargetExecutionState getStateOf(TargetObject object) {
@@ -311,6 +357,20 @@ public class TraceRecorderTarget extends AbstractTarget {
 			ActionName.STEP_EXT, "Step the target in a target-defined way",
 			stateNullOr(TargetExecutionState::isStopped),
 			steppable -> steppable.step(TargetStepKind.EXTENDED));
+	}
+
+	@Override
+	protected Map<String, ActionEntry> collectRefreshActions(ActionContext context) {
+		// Not necessary to support this here
+		return Map.of();
+	}
+
+	@Override
+	protected Map<String, ActionEntry> collectToggleActions(ActionContext context) {
+		return collectIfaceActions(context, TargetTogglable.class, "Toggle",
+			ActionName.TOGGLE, "Toggle the object",
+			togglable -> true,
+			togglable -> togglable.toggle(!togglable.isEnabled()));
 	}
 
 	@Override
@@ -416,6 +476,18 @@ public class TraceRecorderTarget extends AbstractTarget {
 				.map(TargetObject::invalidateCaches)
 				.toArray(CompletableFuture[]::new);
 		return CompletableFuture.allOf(requests);
+	}
+
+	@Override
+	public CompletableFuture<String> executeAsync(String command, boolean toString) {
+		TargetInterpreter interpreter = findObjectInRecorder(null, TargetInterpreter.class);
+		if (interpreter == null) {
+			return AsyncUtils.nil();
+		}
+		if (toString) {
+			return interpreter.executeCapture(command);
+		}
+		return interpreter.execute(command).thenApply(r -> null);
 	}
 
 	@Override
@@ -539,6 +611,12 @@ public class TraceRecorderTarget extends AbstractTarget {
 		}
 		TargetBreakpointSpec spec = loc.getSpecification();
 		return spec.toggle(enabled);
+	}
+
+	@Override
+	public CompletableFuture<Void> forceTerminateAsync() {
+		recorder.stopRecording();
+		return AsyncUtils.nil();
 	}
 
 	@Override

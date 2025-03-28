@@ -90,7 +90,8 @@ public:
     postsurround,		///< Function or array operator form
     presurround,		///< Modifier form (like a cast operation)
     space,			///< No explicitly printed token
-    hiddenfunction		///< Operation that isn't explicitly printed
+    hiddenfunction,		///< Operation that isn't explicitly printed
+    unary_postfix		///< Unary operator form (printed after its input)
   };
   string print1;		///< Printing characters for the token
   string print2;		///< (terminating) characters for the token
@@ -101,6 +102,7 @@ public:
   int4 spacing;			///< Spaces to print around operator
   int4 bump;			///< Spaces to indent if we break here
   OpToken *negate;		///< The token representing the negation of this token
+  OpToken *lrswap;		///< The token representing the token used if the left-hand and right-hand sides are swapped
 };
 
 /// \brief The base class API for emitting a high-level language
@@ -454,7 +456,8 @@ public:
   uint4 getHeaderComment(void) const { return head_comment_type; }	///< Get the type of comments suitable for a function header
   void setHeaderComment(uint4 val) { head_comment_type = val; }		///< Set the type of comments suitable for a function header
   bool emitsMarkup(void) const { return emit->emitsMarkup(); }		///< Does the low-level emitter, emit markup
-  void setMarkup(bool val);						///< Set whether the low-level emitter, emits markup
+  void setMarkup(bool val) { emit->setMarkup(val); }			///< Turn on/off mark-up in emitted output
+  void setPackedOutput(bool val);					///< Turn on/off packed output
   void setFlat(bool val);						///< Set whether nesting code structure should be emitted
 
   virtual void initializeFromArchitecture(void)=0;		///< Initialize architecture specific aspects of printer

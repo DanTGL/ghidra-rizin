@@ -21,7 +21,6 @@ import java.util.concurrent.CompletableFuture;
 import javax.swing.Icon;
 
 import ghidra.app.plugin.core.debug.gui.DebuggerResources.AutoReadMemoryAction;
-import ghidra.async.AsyncUtils;
 import ghidra.debug.api.target.Target;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
 import ghidra.framework.plugintool.PluginTool;
@@ -29,10 +28,14 @@ import ghidra.program.model.address.*;
 import ghidra.trace.model.Lifespan;
 import ghidra.trace.model.TraceAddressSnapRange;
 import ghidra.trace.model.memory.*;
-import ghidra.util.task.TaskMonitor;
 
 public class VisibleROOnceAutoReadMemorySpec implements AutoReadMemorySpec {
-	public static final String CONFIG_NAME = "READ_VIS_RO_ONCE";
+	public static final String CONFIG_NAME = "1_READ_VIS_RO_ONCE";
+
+	@Override
+	public boolean equals(Object obj) {
+		return this.getClass() == obj.getClass();
+	}
 
 	@Override
 	public String getConfigName() {
@@ -50,19 +53,19 @@ public class VisibleROOnceAutoReadMemorySpec implements AutoReadMemorySpec {
 	}
 
 	@Override
-	public CompletableFuture<?> readMemory(PluginTool tool, DebuggerCoordinates coordinates,
+	public CompletableFuture<Boolean> readMemory(PluginTool tool, DebuggerCoordinates coordinates,
 			AddressSetView visible) {
 		if (!coordinates.isAliveAndReadsPresent()) {
-			return AsyncUtils.nil();
+			return CompletableFuture.completedFuture(false);
 		}
 		Target target = coordinates.getTarget();
 		TraceMemoryManager mm = coordinates.getTrace().getMemoryManager();
 		AddressSetView alreadyKnown = mm.getAddressesWithState(coordinates.getSnap(), visible,
-			s -> s == TraceMemoryState.KNOWN);
+			s -> s == TraceMemoryState.KNOWN || s == TraceMemoryState.ERROR);
 		AddressSet toRead = visible.subtract(alreadyKnown);
 
 		if (toRead.isEmpty()) {
-			return AsyncUtils.nil();
+			return CompletableFuture.completedFuture(false);
 		}
 
 		AddressSet everKnown = new AddressSet();
@@ -85,9 +88,9 @@ public class VisibleROOnceAutoReadMemorySpec implements AutoReadMemorySpec {
 		toRead.delete(everKnown.intersect(readOnly));
 
 		if (toRead.isEmpty()) {
-			return AsyncUtils.nil();
+			return CompletableFuture.completedFuture(false);
 		}
 
-		return target.readMemoryAsync(toRead, TaskMonitor.DUMMY);
+		return doRead(tool, monitor -> target.readMemoryAsync(toRead, monitor));
 	}
 }
