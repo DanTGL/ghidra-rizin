@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -154,14 +154,17 @@ public abstract class LocalFolderItem implements FolderItem {
 	}
 
 	/**
-	 * Returns hidden database directory
+	 * Returns hidden data directory.
+	 * NOTE: Even if a data directory is not required this method will still return one to 
+	 * allow removal of an unknown item type that may or may not use it.
 	 */
-	File getDataDir() {
+	final File getDataDir() {
 		synchronized (fileSystem) {
 			// Use hidden DB directory
-			return new File(propertyFile.getFolder(), LocalFileSystem.HIDDEN_DIR_PREFIX +
-				LocalFileSystem.escapeHiddenDirPrefixChars(propertyFile.getStorageName()) +
-				DATA_DIR_EXTENSION);
+			return new File(propertyFile.getFolder(),
+				LocalFileSystem.HIDDEN_DIR_PREFIX +
+					LocalFileSystem.escapeHiddenDirPrefixChars(propertyFile.getStorageName()) +
+					DATA_DIR_EXTENSION);
 		}
 	}
 
@@ -187,8 +190,8 @@ public abstract class LocalFolderItem implements FolderItem {
 					throw new FileInUseException(getName() + " versioning error", e);
 				}
 				if (isCheckedOut) {
-					throw new FileInUseException(getName() + " version " + version +
-						" is checked out");
+					throw new FileInUseException(
+						getName() + " version " + version + " is checked out");
 				}
 			}
 			else if (!isVersioned && getCheckoutId() != DEFAULT_CHECKOUT_ID) {
@@ -355,7 +358,7 @@ public abstract class LocalFolderItem implements FolderItem {
 	 * Files are restored to there original state if unable to remove
 	 * all files.
 	 */
-	void deleteContent(String user) throws IOException {
+	final void deleteContent(String user) throws IOException {
 		synchronized (fileSystem) {
 			File dataDir = getDataDir();
 			File chkDir = new File(dataDir.getParentFile(), dataDir.getName() + ".delete");
@@ -373,7 +376,8 @@ public abstract class LocalFolderItem implements FolderItem {
 			}
 			finally {
 				if (!success) {
-					if (useDataDir && !dataDir.exists() && chkDir.exists() && propertyFile.exists()) {
+					if (useDataDir && !dataDir.exists() && chkDir.exists() &&
+						propertyFile.exists()) {
 						chkDir.renameTo(dataDir);
 					}
 				}
@@ -455,7 +459,7 @@ public abstract class LocalFolderItem implements FolderItem {
 	 */
 	@Override
 	public String getContentType() {
-		return propertyFile.getString(CONTENT_TYPE, null);
+		return propertyFile.getString(CONTENT_TYPE, UnknownFolderItem.UNKNOWN_CONTENT_TYPE);
 	}
 
 	/**
@@ -657,8 +661,7 @@ public abstract class LocalFolderItem implements FolderItem {
 		synchronized (fileSystem) {
 
 			ItemCheckoutStatus coStatus =
-				checkoutMgr.newCheckout(checkoutType, 
-						user, getCurrentVersion(), projectPath);
+				checkoutMgr.newCheckout(checkoutType, user, getCurrentVersion(), projectPath);
 			if (checkoutType != CheckoutType.NORMAL && coStatus != null && getFileID() == null) {
 				// Establish missing fileID for on exclusive checkout
 				resetFileID();
@@ -808,12 +811,22 @@ public abstract class LocalFolderItem implements FolderItem {
 			else if (fileType == DATABASE_FILE_TYPE) {
 				return new LocalDatabaseItem(fileSystem, propertyFile);
 			}
+			else if (fileType == UNKNOWN_FILE_TYPE) {
+				log.error("Folder item has unspecified file type: " +
+					new File(propertyFile.getFolder(), propertyFile.getStorageName()));
+			}
+			else {
+				log.error("Folder item has unsupported file type (" + fileType + "): " +
+					new File(propertyFile.getFolder(), propertyFile.getStorageName()));
+			}
 		}
 		catch (FileNotFoundException e) {
-			log.error("Item may be corrupt due to missing file: " + propertyFile.getPath(), e);
+			log.error("Folder item may be corrupt due to missing file: " +
+				new File(propertyFile.getFolder(), propertyFile.getStorageName()), e);
 		}
 		catch (IOException e) {
-			log.error("Item may be corrupt: " + propertyFile.getPath(), e);
+			log.error("Folder item may be corrupt: " +
+				new File(propertyFile.getFolder(), propertyFile.getStorageName()), e);
 		}
 		return new UnknownFolderItem(fileSystem, propertyFile);
 	}

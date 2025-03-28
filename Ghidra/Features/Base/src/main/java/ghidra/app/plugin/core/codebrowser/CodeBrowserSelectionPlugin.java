@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -92,6 +92,7 @@ public class CodeBrowserSelectionPlugin extends Plugin {
 				.helpLocation(new HelpLocation(HelpTopics.SELECTION, "Clear Selection"))
 				.withContext(CodeViewerActionContext.class, true)
 				.inWindow(ActionBuilder.When.CONTEXT_MATCHES)
+				.enabledWhen(c -> c.hasSelection())
 				.onAction(c -> ((CodeViewerProvider) c.getComponentProvider())
 						.setSelection(new ProgramSelection()))
 				.buildAndInstall(tool);
@@ -148,7 +149,7 @@ public class CodeBrowserSelectionPlugin extends Plugin {
 		Icon markerIcon = new GIcon("icon.plugin.codebrowser.cursor.marker");
 		String title = "Selected Ranges in " + program.getName();
 		TableComponentProvider<AddressRangeInfo> tableProvider =
-			tableService.showTableWithMarkers(title, "Selected Ranges", model,
+			tableService.showTableWithMarkers(title, "Address Ranges", model,
 				SearchConstants.SEARCH_HIGHLIGHT_COLOR, markerIcon, title, null);
 		tableProvider.installRemoveItemsAction();
 
@@ -184,7 +185,7 @@ public class CodeBrowserSelectionPlugin extends Plugin {
 		String title = "Selection Table";
 		Icon markerIcon = new GIcon("icon.plugin.codebrowser.cursor.marker");
 		TableComponentProvider<Address> tableProvider =
-			tableService.showTableWithMarkers(title + " " + model.getName(), "Selection", model,
+			tableService.showTableWithMarkers(title + " " + model.getName(), "Selections", model,
 				SearchConstants.SEARCH_HIGHLIGHT_COLOR, markerIcon, title, null);
 		tableProvider.installRemoveItemsAction();
 	}

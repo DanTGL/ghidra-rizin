@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -31,7 +31,7 @@ import ghidra.app.nav.*;
 import ghidra.app.plugin.core.navigation.GoToAddressLabelPlugin;
 import ghidra.app.util.ListingHighlightProvider;
 import ghidra.app.util.viewer.util.FieldNavigator;
-import ghidra.framework.model.UndoableDomainObject;
+import ghidra.framework.model.DomainObject;
 import ghidra.framework.plugintool.ModalPluginTool;
 import ghidra.framework.plugintool.Plugin;
 import ghidra.framework.plugintool.util.PluginException;
@@ -41,6 +41,7 @@ import ghidra.program.model.listing.ProgramChangeSet;
 import ghidra.program.util.ProgramLocation;
 import ghidra.program.util.ProgramSelection;
 import ghidra.util.HelpLocation;
+import ghidra.util.SystemUtilities;
 import help.Help;
 import help.HelpService;
 
@@ -54,25 +55,19 @@ public class ProgramMultiUserMergeManager extends MergeManager {
 	private GoToAddressLabelPlugin goToPlugin;
 	private ListingMergePanel mergePanel;
 	private boolean isShowingListingMergePanel = false;
-	private boolean showListingPanels = true;
 	MergeNavigatable navigatable;
+
+	private final boolean showListingPanels;
 
 	public ProgramMultiUserMergeManager(Program resultProgram, Program myProgram,
 			Program originalProgram, Program latestProgram, ProgramChangeSet latestChangeSet,
 			ProgramChangeSet myChangeSet) {
 		super(resultProgram, myProgram, originalProgram, latestProgram, latestChangeSet,
 			myChangeSet);
-	}
 
-	public ProgramMultiUserMergeManager(Program resultProgram, Program myProgram,
-			Program originalProgram, Program latestProgram, ProgramChangeSet latestChangeSet,
-			ProgramChangeSet myChangeSet, boolean showListingPanels) {
-		super(resultProgram, myProgram, originalProgram, latestProgram, latestChangeSet,
-			myChangeSet);
-
-		// True signals to show the Listing panels (the default); false signals to leave the
-		// panels empty.
-		this.showListingPanels = showListingPanels;
+		// Disable multi-listing panel rendering when running in batch test mode for
+		// improved performance.
+		showListingPanels = !SystemUtilities.isInTestingBatchMode();
 	}
 
 	@Override
@@ -106,7 +101,6 @@ public class ProgramMultiUserMergeManager extends MergeManager {
 		ListingMergeManager listingMergeManager =
 			new ListingMergeManager(this, resultProgram, originalProgram, latestProgram, myProgram,
 				(ProgramChangeSet) latestChangeSet, (ProgramChangeSet) myChangeSet);
-		listingMergeManager.setShowListingPanel(showListingPanels);
 		mergeResolvers[idx++] = listingMergeManager;
 
 		mergeResolvers[idx++] =
@@ -140,7 +134,7 @@ public class ProgramMultiUserMergeManager extends MergeManager {
 
 	@Override
 	protected MergeManagerPlugin createMergeManagerPlugin(ModalPluginTool mergePluginTool,
-			MergeManager multiUserMergeManager, UndoableDomainObject modifiableDomainObject) {
+			MergeManager multiUserMergeManager, DomainObject modifiableDomainObject) {
 		return new ProgramMergeManagerPlugin(mergeTool, ProgramMultiUserMergeManager.this,
 			(Program) resultDomainObject);
 	}
@@ -406,6 +400,15 @@ public class ProgramMultiUserMergeManager extends MergeManager {
 		return isShowingListingMergePanel;
 	}
 
+	/**
+	 * Determine if the listing panels should be rendered.
+	 * NOTE: This is provided for testing performance reasons only.
+	 * @return true if listing panels should be rendered
+	 */
+	public boolean isShowListingPanel() {
+		return showListingPanels;
+	}
+
 }
 
 class MergeNavigatable implements Navigatable {
@@ -516,7 +519,8 @@ class MergeNavigatable implements Navigatable {
 	}
 
 	@Override
-	public void removeHighlightProvider(ListingHighlightProvider highlightProvider, Program program) {
+	public void removeHighlightProvider(ListingHighlightProvider highlightProvider,
+			Program program) {
 		// currently unsupported
 	}
 

@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -217,6 +217,54 @@ public class DecompileOptions {
 	private final static boolean NOCAST_OPTIONDEFAULT = false;		// Must match PrintC::resetDefaultsPrintC
 	private boolean noCastPrint;
 
+	public enum BraceStyle {
+
+		Same("same", "Same line"), Next("next", "Next line"), Skip("skip", "Skip one line");
+
+		private String label;
+		private String optionString;
+
+		private BraceStyle(String optString, String label) {
+			this.label = label;
+			this.optionString = optString;
+		}
+
+		public String getOptionString() {
+			return optionString;
+		}
+
+		@Override
+		public String toString() {
+			return label;
+		}
+	}
+
+	private final static String BRACEFUNCTION_OPTIONSTRING =
+		"Display.Brace format for function blocks";
+	private final static String BRACEFUNCTION_OPTIONDESCRIPTION =
+		"Where the opening brace is displayed, after a function declaration";
+	private final static BraceStyle BRACEFUNCTION_OPTIONDEFAULT = BraceStyle.Skip;
+	private BraceStyle braceFunction;
+
+	private final static String BRACEIFELSE_OPTIONSTRING =
+		"Display.Brace format for if/else blocks";
+	private final static String BRACEIFELSE_OPTIONDESCRIPTION =
+		"Where the opening brace is displayed, for an if/else code block";
+	private final static BraceStyle BRACEIFELSE_OPTIONDEFAULT = BraceStyle.Same;
+	private BraceStyle braceIfElse;
+
+	private final static String BRACELOOP_OPTIONSTRING = "Display.Brace format for loop blocks";
+	private final static String BRACELOOP_OPTIONDESCRIPTION =
+		"Where the opening brace is displayed, for the body of a loop";
+	private final static BraceStyle BRACELOOP_OPTIONDEFAULT = BraceStyle.Same;
+	private BraceStyle braceLoop;
+
+	private final static String BRACESWITCH_OPTIONSTRING = "Display.Brace format for switch blocks";
+	private final static String BRACESWITCH_OPTIONDESCRIPTION =
+		"Where the opening brace is displayed, for the body of a switch statement";
+	private final static BraceStyle BRACESWITCH_OPTIONDEFAULT = BraceStyle.Same;
+	private BraceStyle braceSwitch;
+
 	private final static String MAXWIDTH_OPTIONSTRING = "Display.Maximum characters in a code line";
 	private final static String MAXWIDTH_OPTIONDESCRIPTION =
 		"Maximum number of characters allowed per line before before line breaks are forced.";
@@ -369,10 +417,7 @@ public class DecompileOptions {
 
 	private final static String HIGHLIGHT_KEYWORD_MSG = "Display.Color for Keywords";
 	private final static GColor HIGHLIGHT_KEYWORD_COLOR = new GColor("color.fg.decompiler.keyword");
-
-	private final static String HIGHLIGHT_FUNCTION_MSG = "Display.Color for Function names";
-	private final static GColor HIGHLIGHT_FUNCTION_COLOR = new GColor("color.fg.decompiler.function.name");
-
+	
 	private final static String HIGHLIGHT_COMMENT_MSG = "Display.Color for Comments";
 	private final static GColor HIGHLIGHT_COMMENT_COLOR = new GColor( "color.fg.decompiler.comment");
 
@@ -452,6 +497,10 @@ public class DecompileOptions {
 		aliasBlock = ALIASBLOCK_OPTIONDEFAULT;
 		conventionPrint = CONVENTION_OPTIONDEFAULT;
 		noCastPrint = NOCAST_OPTIONDEFAULT;
+		braceFunction = BRACEFUNCTION_OPTIONDEFAULT;
+		braceIfElse = BRACEIFELSE_OPTIONDEFAULT;
+		braceLoop = BRACELOOP_OPTIONDEFAULT;
+		braceSwitch = BRACESWITCH_OPTIONDEFAULT;
 		maxwidth = MAXWIDTH_OPTIONDEFAULT;
 		indentwidth = INDENTWIDTH_OPTIONDEFAULT;
 		commentindent = COMMENTINDENT_OPTIONDEFAULT;
@@ -512,6 +561,10 @@ public class DecompileOptions {
 		aliasBlock = opt.getEnum(ALIASBLOCK_OPTIONSTRING, ALIASBLOCK_OPTIONDEFAULT);
 		conventionPrint = opt.getBoolean(CONVENTION_OPTIONSTRING, CONVENTION_OPTIONDEFAULT);
 		noCastPrint = opt.getBoolean(NOCAST_OPTIONSTRING, NOCAST_OPTIONDEFAULT);
+		braceFunction = opt.getEnum(BRACEFUNCTION_OPTIONSTRING, BRACEFUNCTION_OPTIONDEFAULT);
+		braceIfElse = opt.getEnum(BRACEIFELSE_OPTIONSTRING, BRACEIFELSE_OPTIONDEFAULT);
+		braceLoop = opt.getEnum(BRACELOOP_OPTIONSTRING, BRACELOOP_OPTIONDEFAULT);
+		braceSwitch = opt.getEnum(BRACESWITCH_OPTIONSTRING, BRACESWITCH_OPTIONDEFAULT);
 		maxwidth = opt.getInt(MAXWIDTH_OPTIONSTRING, MAXWIDTH_OPTIONDEFAULT);
 		indentwidth = opt.getInt(INDENTWIDTH_OPTIONSTRING, INDENTWIDTH_OPTIONDEFAULT);
 		commentindent = opt.getInt(COMMENTINDENT_OPTIONSTRING, COMMENTINDENT_OPTIONDEFAULT);
@@ -642,6 +695,18 @@ public class DecompileOptions {
 		opt.registerOption(NOCAST_OPTIONSTRING, NOCAST_OPTIONDEFAULT,
 			new HelpLocation(HelpTopics.DECOMPILER, "DisplayDisableCasts"),
 			NOCAST_OPTIONDESCRIPTION);
+		opt.registerOption(BRACEFUNCTION_OPTIONSTRING, BRACEFUNCTION_OPTIONDEFAULT,
+			new HelpLocation(HelpTopics.DECOMPILER, "DisplayBraceFormatting"),
+			BRACEFUNCTION_OPTIONDESCRIPTION);
+		opt.registerOption(BRACEIFELSE_OPTIONSTRING, BRACEIFELSE_OPTIONDEFAULT,
+			new HelpLocation(HelpTopics.DECOMPILER, "DisplayBraceFormatting"),
+			BRACEIFELSE_OPTIONDESCRIPTION);
+		opt.registerOption(BRACELOOP_OPTIONSTRING, BRACELOOP_OPTIONDEFAULT,
+			new HelpLocation(HelpTopics.DECOMPILER, "DisplayBraceFormatting"),
+			BRACELOOP_OPTIONDESCRIPTION);
+		opt.registerOption(BRACESWITCH_OPTIONSTRING, BRACESWITCH_OPTIONDEFAULT,
+			new HelpLocation(HelpTopics.DECOMPILER, "DisplayBraceFormatting"),
+			BRACESWITCH_OPTIONDESCRIPTION);
 		opt.registerOption(MAXWIDTH_OPTIONSTRING, MAXWIDTH_OPTIONDEFAULT,
 			new HelpLocation(HelpTopics.DECOMPILER, "DisplayMaxChar"), MAXWIDTH_OPTIONDESCRIPTION);
 		opt.registerOption(INDENTWIDTH_OPTIONSTRING, INDENTWIDTH_OPTIONDEFAULT,
@@ -683,9 +748,6 @@ public class DecompileOptions {
 		opt.registerThemeColorBinding(HIGHLIGHT_TYPE_MSG, HIGHLIGHT_TYPE_COLOR.getId(),
 			new HelpLocation(HelpTopics.DECOMPILER, "DisplayTokenColor"),
 			"Color used for highlighting types.");
-		opt.registerThemeColorBinding(HIGHLIGHT_FUNCTION_MSG, HIGHLIGHT_FUNCTION_COLOR.getId(),
-			new HelpLocation(HelpTopics.DECOMPILER, "DisplayTokenColor"),
-			"Color used for highlighting function names.");
 		opt.registerThemeColorBinding(HIGHLIGHT_COMMENT_MSG, HIGHLIGHT_COMMENT_COLOR.getId(),
 			new HelpLocation(HelpTopics.DECOMPILER, "DisplayTokenColor"),
 			"Color used for highlighting comments.");
@@ -826,6 +888,19 @@ public class DecompileOptions {
 		if (noCastPrint != NOCAST_OPTIONDEFAULT) {
 			appendOption(encoder, ELEM_NOCASTPRINTING, noCastPrint ? "on" : "off", "", "");
 		}
+		if (braceFunction != BRACEFUNCTION_OPTIONDEFAULT) {
+			appendOption(encoder, ELEM_BRACEFORMAT, "function", braceFunction.getOptionString(),
+				"");
+		}
+		if (braceIfElse != BRACEIFELSE_OPTIONDEFAULT) {
+			appendOption(encoder, ELEM_BRACEFORMAT, "ifelse", braceIfElse.getOptionString(), "");
+		}
+		if (braceLoop != BRACELOOP_OPTIONDEFAULT) {
+			appendOption(encoder, ELEM_BRACEFORMAT, "loop", braceLoop.getOptionString(), "");
+		}
+		if (braceSwitch != BRACESWITCH_OPTIONDEFAULT) {
+			appendOption(encoder, ELEM_BRACEFORMAT, "switch", braceSwitch.getOptionString(), "");
+		}
 		if (maxwidth != MAXWIDTH_OPTIONDEFAULT) {
 			appendOption(encoder, ELEM_MAXLINEWIDTH, Integer.toString(maxwidth), "", "");
 		}
@@ -885,6 +960,66 @@ public class DecompileOptions {
 	}
 
 	/**
+	 * @return the brace formatting style for function bodies
+	 */
+	public BraceStyle getFunctionBraceFormat() {
+		return braceFunction;
+	}
+
+	/**
+	 * Set how braces are formatted around a function body
+	 * @param style is the formatting style
+	 */
+	public void setFunctionBraceFormat(BraceStyle style) {
+		this.braceFunction = style;
+	}
+
+	/**
+	 * @return the brace formatting style for if/else code blocks
+	 */
+	public BraceStyle getIfElseBraceFormat() {
+		return braceIfElse;
+	}
+
+	/**
+	 * Set how braces are formatted around an if/else code block
+	 * @param style is the formatting style
+	 */
+	public void setIfElseBraceFormat(BraceStyle style) {
+		this.braceIfElse = style;
+	}
+
+	/**
+	 * @return the brace formatting style for loop bodies
+	 */
+	public BraceStyle getLoopBraceFormat() {
+		return braceLoop;
+	}
+
+	/**
+	 * Set how braces are formatted a loop body
+	 * @param style is the formatting style
+	 */
+	public void setLoopBraceFormat(BraceStyle style) {
+		this.braceLoop = style;
+	}
+
+	/**
+	 * @return the brace formatting style for switch blocks
+	 */
+	public BraceStyle getSwitchBraceFormat() {
+		return braceSwitch;
+	}
+
+	/**
+	 * Set how braces are formatted around a switch block
+	 * @param style is the formatting style
+	 */
+	public void setSwitchBraceFormat(BraceStyle style) {
+		this.braceSwitch = style;
+	}
+
+	/**
 	 * @return the maximum number of characters the decompiler displays in a single line of output
 	 */
 	public int getMaxWidth() {
@@ -911,13 +1046,6 @@ public class DecompileOptions {
 	 */
 	public Color getTypeColor() {
 		return HIGHLIGHT_TYPE_COLOR;
-	}
-
-	/**
-	 * @return color associated with a function name token
-	 */
-	public Color getFunctionColor() {
-		return HIGHLIGHT_FUNCTION_COLOR;
 	}
 
 	/**
@@ -1115,6 +1243,21 @@ public class DecompileOptions {
 	 */
 	public void setEliminateUnreachable(boolean eliminateUnreachable) {
 		this.eliminateUnreachable = eliminateUnreachable;
+	}
+
+	/**
+	 * @return true if the decompiler currently respects read-only flags
+	 */
+	public boolean isRespectReadOnly() {
+		return readOnly;
+	}
+
+	/**
+	 * Set whether the decompiler should respect read-only flags as part of its analysis.
+	 * @param readOnly is true if read-only flags are respected
+	 */
+	public void setRespectReadOnly(boolean readOnly) {
+		this.readOnly = readOnly;
 	}
 
 	/**

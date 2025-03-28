@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,14 +22,15 @@ import java.util.Map.Entry;
 import java.util.concurrent.locks.ReadWriteLock;
 
 import db.DBHandle;
+import ghidra.framework.data.OpenMode;
 import ghidra.trace.database.DBTrace;
 import ghidra.trace.database.DBTraceManager;
 import ghidra.trace.database.thread.DBTraceThreadManager;
-import ghidra.trace.model.Trace.TraceSnapshotChangeType;
 import ghidra.trace.model.time.TraceSnapshot;
 import ghidra.trace.model.time.TraceTimeManager;
 import ghidra.trace.model.time.schedule.TraceSchedule;
 import ghidra.trace.util.TraceChangeRecord;
+import ghidra.trace.util.TraceEvents;
 import ghidra.util.LockHold;
 import ghidra.util.database.*;
 import ghidra.util.exception.VersionException;
@@ -44,7 +45,7 @@ public class DBTraceTimeManager implements TraceTimeManager, DBTraceManager {
 	protected final DBCachedObjectStore<DBTraceSnapshot> snapshotStore;
 	protected final DBCachedObjectIndex<String, DBTraceSnapshot> snapshotsBySchedule;
 
-	public DBTraceTimeManager(DBHandle dbh, DBOpenMode openMode, ReadWriteLock lock,
+	public DBTraceTimeManager(DBHandle dbh, OpenMode openMode, ReadWriteLock lock,
 			TaskMonitor monitor, DBTrace trace, DBTraceThreadManager threadManager)
 			throws VersionException, IOException {
 		this.trace = trace;
@@ -70,17 +71,17 @@ public class DBTraceTimeManager implements TraceTimeManager, DBTraceManager {
 
 	protected void notifySnapshotAdded(DBTraceSnapshot snapshot) {
 		trace.updateViewportsSnapshotAdded(snapshot);
-		trace.setChanged(new TraceChangeRecord<>(TraceSnapshotChangeType.ADDED, null, snapshot));
+		trace.setChanged(new TraceChangeRecord<>(TraceEvents.SNAPSHOT_ADDED, null, snapshot));
 	}
 
 	protected void notifySnapshotChanged(DBTraceSnapshot snapshot) {
 		trace.updateViewportsSnapshotChanged(snapshot);
-		trace.setChanged(new TraceChangeRecord<>(TraceSnapshotChangeType.CHANGED, null, snapshot));
+		trace.setChanged(new TraceChangeRecord<>(TraceEvents.SNAPSHOT_CHANGED, null, snapshot));
 	}
 
 	protected void notifySnapshotDeleted(DBTraceSnapshot snapshot) {
 		trace.updateViewportsSnapshotDeleted(snapshot);
-		trace.setChanged(new TraceChangeRecord<>(TraceSnapshotChangeType.DELETED, null, snapshot));
+		trace.setChanged(new TraceChangeRecord<>(TraceEvents.SNAPSHOT_DELETED, null, snapshot));
 	}
 
 	@Override
@@ -130,6 +131,26 @@ public class DBTraceTimeManager implements TraceTimeManager, DBTraceManager {
 	@Override
 	public Collection<? extends TraceSnapshot> getSnapshotsWithSchedule(TraceSchedule schedule) {
 		return snapshotsBySchedule.get(schedule.toString());
+	}
+
+	@Override
+	public TraceSnapshot findScratchSnapshot(TraceSchedule schedule) {
+		Collection<? extends TraceSnapshot> exist = getSnapshotsWithSchedule(schedule);
+		if (!exist.isEmpty()) {
+			return exist.iterator().next();
+		}
+		/**
+		 * TODO: This could be more sophisticated.... Does it need to be, though? Ideally, we'd only
+		 * keep state around that has annotations, e.g., bookmarks and code units. That needs a new
+		 * query (latestStartSince) on those managers, though. It must find the latest start tick
+		 * since a given snap. We consider only start snaps because placed code units go "from now
+		 * on out".
+		 */
+		TraceSnapshot last = getMostRecentSnapshot(-1);
+		long snap = last == null ? Long.MIN_VALUE : last.getKey() + 1;
+		TraceSnapshot snapshot = getSnapshot(snap, true);
+		snapshot.setSchedule(schedule);
+		return snapshot;
 	}
 
 	@Override

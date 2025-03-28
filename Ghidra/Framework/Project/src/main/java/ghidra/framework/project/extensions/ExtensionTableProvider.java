@@ -33,6 +33,7 @@ import ghidra.framework.Application;
 import ghidra.framework.plugintool.PluginTool;
 import ghidra.util.HelpLocation;
 import ghidra.util.Msg;
+import ghidra.util.extensions.ExtensionUtils;
 import ghidra.util.filechooser.GhidraFileChooserModel;
 import ghidra.util.filechooser.GhidraFileFilter;
 import resources.Icons;
@@ -71,12 +72,15 @@ public class ExtensionTableProvider extends DialogComponentProvider {
 		JPanel panel = new JPanel(new BorderLayout());
 
 		extensionTablePanel = new ExtensionTablePanel(tool);
+		extensionTablePanel.getAccessibleContext().setAccessibleName("Extenstion Table");
 		ExtensionDetailsPanel extensionDetailsPanel =
 			new ExtensionDetailsPanel(extensionTablePanel);
+		extensionDetailsPanel.getAccessibleContext().setAccessibleName("Extension Details");
 
 		final JSplitPane splitPane =
 			new JSplitPane(JSplitPane.VERTICAL_SPLIT, extensionTablePanel, extensionDetailsPanel);
 		splitPane.setResizeWeight(.75);
+		splitPane.getAccessibleContext().setAccessibleName("Extension Table and Details");
 		panel.add(splitPane, BorderLayout.CENTER);
 
 		splitPane.setDividerLocation(.75);
@@ -85,7 +89,7 @@ public class ExtensionTableProvider extends DialogComponentProvider {
 		createRefreshAction(extensionTablePanel, extensionDetailsPanel);
 
 		addOKButton();
-
+		panel.getAccessibleContext().setAccessibleName("Extension Table Provider");
 		return panel;
 	}
 
@@ -105,7 +109,7 @@ public class ExtensionTableProvider extends DialogComponentProvider {
 		super.dialogClosed();
 
 		if (extensionTablePanel.getTableModel().hasModelChanged() || requireRestart) {
-			Msg.showInfo(this, getComponent(), "Extensions Changed!",
+			Msg.showInfo(this, null, "Extensions Changed!",
 				"Please restart Ghidra for extension changes to take effect.");
 		}
 	}
@@ -170,13 +174,14 @@ public class ExtensionTableProvider extends DialogComponentProvider {
 			// A sanity check for users that try to install an extension from a source folder
 			// instead of a fully built extension.
 			if (new File(file, "build.gradle").isFile()) {
-				Msg.showWarn(this, null, "Invalid Extension", "The selected extension " +
-					"contains a 'build.gradle' file.\nGhidra does not support installing " +
-					"extensions in source form.\nPlease build the extension and try again.");
+				Msg.showWarn(this, null, "Invalid Extension",
+					"The selected extension " +
+						"contains a 'build.gradle' file.\nGhidra does not support installing " +
+						"extensions in source form.\nPlease build the extension and try again.");
 				continue;
 			}
 
-			boolean success = ExtensionUtils.install(file);
+			boolean success = ExtensionInstaller.install(file);
 			didInstall |= success;
 		}
 		return didInstall;
@@ -203,8 +208,8 @@ public class ExtensionTableProvider extends DialogComponentProvider {
 		group = "extensionTools";
 		refreshAction.setMenuBarData(new MenuData(new String[] { "Refresh" }, refreshIcon, group));
 		refreshAction.setToolBarData(new ToolBarData(refreshIcon, group));
-		refreshAction.setHelpLocation(
-			new HelpLocation(GenericHelpTopics.FRONT_END, "ExtensionTools"));
+		refreshAction
+				.setHelpLocation(new HelpLocation(GenericHelpTopics.FRONT_END, "ExtensionTools"));
 		refreshAction.setDescription("Refresh extension list");
 		addAction(refreshAction);
 	}

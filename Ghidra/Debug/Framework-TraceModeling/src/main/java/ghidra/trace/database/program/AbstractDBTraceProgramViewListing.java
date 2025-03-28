@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -22,6 +22,7 @@ import org.apache.commons.collections4.IteratorUtils;
 
 import generic.NestedIterator;
 import ghidra.program.database.ProgramDB;
+import ghidra.program.database.code.InstructionDB;
 import ghidra.program.database.function.OverlappingFunctionException;
 import ghidra.program.model.address.*;
 import ghidra.program.model.data.DataType;
@@ -37,10 +38,12 @@ import ghidra.trace.database.DBTrace;
 import ghidra.trace.database.guest.InternalTracePlatform;
 import ghidra.trace.database.listing.UndefinedDBTraceData;
 import ghidra.trace.database.memory.DBTraceMemorySpace;
+import ghidra.trace.database.program.DBTraceProgramViewMemory.RegionEntry;
 import ghidra.trace.database.thread.DBTraceThread;
 import ghidra.trace.model.*;
 import ghidra.trace.model.listing.*;
 import ghidra.trace.model.memory.TraceMemoryRegion;
+import ghidra.trace.model.memory.TraceMemoryState;
 import ghidra.trace.model.program.TraceProgramView;
 import ghidra.trace.model.program.TraceProgramViewListing;
 import ghidra.trace.model.property.TracePropertyMapOperations;
@@ -65,8 +68,8 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 		public int getBytes(ByteBuffer buffer, int addressOffset) {
 			DBTraceMemorySpace mem = trace.getMemoryManager().get(this, false);
 			if (mem == null) {
-				// TODO: 0-fill instead? Will need to check memory space bounds.
-				return 0;
+				buffer.put((byte) 0);
+				return 1;
 			}
 			return mem.getViewBytes(program.snap, address.add(addressOffset), buffer);
 		}
@@ -159,7 +162,7 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 
 	protected AddressSet getAddressSet(Address start, boolean forward) {
 		AddressFactory factory = program.getAddressFactory();
-		AddressSet all = program.allAddresses;
+		AddressSetView all = program.getAllAddresses();
 		return forward
 				? factory.getAddressSet(start, all.getMaxAddress())
 				: factory.getAddressSet(all.getMinAddress(), start);
@@ -281,7 +284,7 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 	}
 
 	protected Iterator<TraceCodeUnit> getCodeUnitIterator(boolean forward) {
-		AddressSetView set = program.allAddresses;
+		AddressSetView set = program.getAllAddresses();
 		return getCodeUnitIterator(forward ? set.getMinAddress() : set.getMaxAddress(), forward);
 	}
 
@@ -300,7 +303,7 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 	}
 
 	protected Iterator<TraceData> getDataIterator(boolean forward) {
-		AddressSetView set = program.allAddresses;
+		AddressSetView set = program.getAllAddresses();
 		return getDataIterator(forward ? set.getMinAddress() : set.getMaxAddress(), forward);
 	}
 
@@ -438,11 +441,28 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 	}
 
 	@Override
+	public long getCommentAddressCount() {
+		return program.viewport.unionedAddresses(
+			s -> program.trace.getCommentAdapter().getAddressSetView(Lifespan.at(s)))
+				.getNumAddresses();
+	}
+
+	@Override
 	public String getComment(int commentType, Address address) {
 		try (LockHold hold = program.trace.lockRead()) {
 			return program.viewport.getTop(
 				s -> program.trace.getCommentAdapter().getComment(s, address, commentType));
 		}
+	}
+
+	@Override
+	public CodeUnitComments getAllComments(Address address) {
+		CommentType[] types = CommentType.values();
+		String[] comments = new String[types.length];
+		for (CommentType type : types) {
+			comments[type.ordinal()] = getComment(type, address);
+		}
+		return new CodeUnitComments(comments);
 	}
 
 	@Override
@@ -717,9 +737,21 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 	public Instruction createInstruction(Address addr, InstructionPrototype prototype,
 			MemBuffer memBuf, ProcessorContextView context, int forcedLengthOverride)
 			throws CodeUnitInsertionException {
-		// TODO: Why memBuf? Can it vary from program memory?
+		int checkLengthOverride =
+			InstructionDB.checkLengthOverride(forcedLengthOverride, prototype);
+		int length = checkLengthOverride != 0 ? checkLengthOverride : prototype.getLength();
+		AddressRange range;
+		try {
+			range = new AddressRangeImpl(addr, length);
+		}
+		catch (AddressOverflowException e) {
+			throw new CodeUnitInsertionException("Code unit would extend beyond address space");
+		}
+		var mostRecent = program.memory.memoryManager.getViewMostRecentStateEntry(program.snap,
+			range, s -> s == TraceMemoryState.KNOWN);
+		long snap = mostRecent == null ? program.snap : mostRecent.getKey().getY2();
 		return codeOperations.instructions()
-				.create(Lifespan.nowOn(program.snap), addr, platform, prototype, context,
+				.create(Lifespan.nowOn(snap), addr, platform, prototype, context,
 					forcedLengthOverride);
 	}
 
@@ -769,13 +801,12 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 
 	@Override
 	public ProgramFragment getFragment(String treeName, Address addr) {
-		TraceMemoryRegion region = program.memory.getTopRegion(
-			s -> program.trace.getMemoryManager().getRegionContaining(s, addr));
-		if (region == null) {
+		RegionEntry entry = program.memory.getRegionsByAddress().get(addr);
+		if (entry == null || !entry.range.contains(addr)) {
 			return null;
 		}
-		return fragmentsByRegion.computeIfAbsent(region,
-			r -> new DBTraceProgramViewFragment(this, r));
+		return fragmentsByRegion.computeIfAbsent(entry.region,
+			r -> new DBTraceProgramViewFragment(this, r, entry.snap));
 	}
 
 	@Override
@@ -788,13 +819,12 @@ public abstract class AbstractDBTraceProgramViewListing implements TraceProgramV
 
 	@Override
 	public ProgramFragment getFragment(String treeName, String name) {
-		TraceMemoryRegion region = program.memory.getTopRegion(
-			s -> program.trace.getMemoryManager().getLiveRegionByPath(s, name));
-		if (region == null) {
+		RegionEntry entry = program.memory.getRegionsByName().get(name);
+		if (entry == null) {
 			return null;
 		}
-		return fragmentsByRegion.computeIfAbsent(region,
-			r -> new DBTraceProgramViewFragment(this, r));
+		return fragmentsByRegion.computeIfAbsent(entry.region,
+			r -> new DBTraceProgramViewFragment(this, r, entry.snap));
 	}
 
 	@Override

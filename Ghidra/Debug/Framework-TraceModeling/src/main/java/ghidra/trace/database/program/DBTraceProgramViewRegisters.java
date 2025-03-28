@@ -21,6 +21,7 @@ import java.util.*;
 
 import db.Transaction;
 import ghidra.framework.data.DomainObjectEventQueues;
+import ghidra.framework.data.DomainObjectFileListener;
 import ghidra.framework.model.*;
 import ghidra.framework.options.Options;
 import ghidra.framework.store.LockException;
@@ -260,11 +261,6 @@ public class DBTraceProgramViewRegisters implements TraceProgramView {
 	}
 
 	@Override
-	public void invalidate() {
-		view.invalidate();
-	}
-
-	@Override
 	public Register getRegister(String name) {
 		return view.getRegister(name);
 	}
@@ -479,6 +475,16 @@ public class DBTraceProgramViewRegisters implements TraceProgramView {
 	}
 
 	@Override
+	public void addDomainFileListener(DomainObjectFileListener listener) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
+	public void removeDomainFileListener(DomainObjectFileListener listener) {
+		throw new UnsupportedOperationException();
+	}
+
+	@Override
 	public EventQueueID createPrivateEventQueue(DomainObjectListener listener, int maxDelay) {
 		return eventQueues.createPrivateEventQueue(listener, maxDelay);
 	}
@@ -674,7 +680,7 @@ public class DBTraceProgramViewRegisters implements TraceProgramView {
 	}
 
 	@Override
-	public TraceProgramView getViewRegisters(TraceThread thread, boolean createIfAbsent) {
-		return view.getViewRegisters(thread, createIfAbsent);
+	public TraceProgramView getViewRegisters(TraceThread t, boolean createIfAbsent) {
+		return view.getViewRegisters(t, createIfAbsent);
 	}
 }

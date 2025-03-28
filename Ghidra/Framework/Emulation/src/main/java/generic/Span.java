@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -32,7 +32,7 @@ import generic.ULongSpan.*;
  * impose behaviors and properties that aren't otherwise present on the type of endpoints. For
  * example, the domain may be {@link Long}s, but using unsigned attributes. The domain also provides
  * a factory for new spans. While nominally, this only supports closed intervals, the domain can
- * define a custom endpoint type to obtain mixed intervals, as in {@link End}.
+ * define a custom endpoint type to obtain mixed intervals.
  *
  * @param <N> the type of endpoints
  * @param <S> the type of spans (recursive)
@@ -387,7 +387,7 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 	 * existing entries are truncated or deleted (or coalesced if they share the same value as the
 	 * new entry) so that the new entry can fit.
 	 * 
-	 * @implNote It is recommended to create an interface (having only the {@link V} parameter)
+	 * @implNote It is recommended to create an interface (having only the {@code <V>} parameter)
 	 *           extending this one specific to your domain and span type, then implement it using
 	 *           an extension of {@link DefaultSpanMap}. See {@link ULongSpanMap} for an example.
 	 * @param <N> the type of endpoints
@@ -411,7 +411,7 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 		 * 
 		 * @return the set of spans
 		 */
-		Set<S> spans();
+		NavigableSet<S> spans();
 
 		/**
 		 * Get the values in this map
@@ -563,7 +563,7 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 		 * 
 		 * @return the iterable
 		 */
-		Iterable<S> spans();
+		NavigableSet<S> spans();
 
 		/**
 		 * Get a span which encloses all spans in the set
@@ -835,7 +835,7 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 			if (this == obj) {
 				return true;
 			}
-			if (!(obj instanceof @SuppressWarnings("rawtypes") DefaultSpanMap that)) {
+			if (!(obj instanceof DefaultSpanMap that)) {
 				return false;
 			}
 			if (this.domain != that.domain) {
@@ -862,9 +862,12 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 		}
 
 		@Override
-		public Set<S> spans() {
+		public NavigableSet<S> spans() {
 			// TODO: Make this a view?
-			return spanTree.values().stream().map(e -> e.getKey()).collect(Collectors.toSet());
+			return spanTree.values()
+					.stream()
+					.map(e -> e.getKey())
+					.collect(Collectors.toCollection(TreeSet::new));
 		}
 
 		@Override
@@ -995,7 +998,7 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 			if (this == obj) {
 				return true;
 			}
-			if (!(obj instanceof @SuppressWarnings("rawtypes") DefaultSpanSet that)) {
+			if (!(obj instanceof DefaultSpanSet that)) {
 				return false;
 			}
 			if (!Objects.equals(this.map, that.map)) {
@@ -1027,7 +1030,7 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 		}
 
 		@Override
-		public Iterable<S> spans() {
+		public NavigableSet<S> spans() {
 			return map.spans();
 		}
 
@@ -1081,6 +1084,11 @@ public interface Span<N, S extends Span<N, S>> extends Comparable<S> {
 		}
 	}
 
+	/**
+	 * Provides a default {@link Object#toString} implementation
+	 * 
+	 * @return the string
+	 */
 	@SuppressWarnings("unchecked")
 	default String doToString() {
 		return domain().toString((S) this);

@@ -35,7 +35,7 @@ import ghidra.util.Swing;
  * The plugin that provides {@link TerminalService}
  */
 @PluginInfo(
-	status = PluginStatus.UNSTABLE,
+	status = PluginStatus.STABLE,
 	category = PluginCategoryNames.COMMON,
 	packageName = CorePluginPackage.NAME,
 	description = "Provides VT100 Terminal Emulation",
@@ -65,38 +65,50 @@ public class TerminalPlugin extends Plugin implements TerminalService {
 		}
 	}
 
-	public TerminalProvider createProvider(Charset charset, VtOutput outputCb) {
+	public TerminalProvider createProvider(Plugin helpPlugin, Charset charset, VtOutput outputCb) {
 		return Swing.runNow(() -> {
 			cleanTerminated();
-			TerminalProvider provider = new TerminalProvider(this, charset);
+			TerminalProvider provider = new TerminalProvider(this, charset, helpPlugin);
 			provider.setOutputCallback(outputCb);
 			provider.addToTool();
 			provider.setVisible(true);
 			providers.add(provider);
 			provider.setClipboardService(clipboardService);
+			provider.toFront();
 			return provider;
 		});
 	}
 
 	@Override
-	public Terminal createNullTerminal(Charset charset, VtOutput outputCb) {
-		return new DefaultTerminal(createProvider(charset, outputCb));
+	public Terminal createNullTerminal(Plugin helpPlugin, Charset charset, VtOutput outputCb) {
+		return new DefaultTerminal(createProvider(helpPlugin, charset, outputCb));
 	}
 
 	@Override
-	public Terminal createWithStreams(Charset charset, InputStream in, OutputStream out) {
+	public Terminal createNullTerminal(Charset charset, VtOutput outputCb) {
+		return createNullTerminal(this, charset, outputCb);
+	}
+
+	@Override
+	public Terminal createWithStreams(Plugin helpPlugin, Charset charset, InputStream in,
+			OutputStream out) {
 		WritableByteChannel channel = Channels.newChannel(out);
-		return new ThreadedTerminal(createProvider(charset, buf -> {
+		return new ThreadedTerminal(createProvider(helpPlugin, charset, buf -> {
 			while (buf.hasRemaining()) {
 				try {
 					//ThreadedTerminal.printBuffer(">> ", buf);
 					channel.write(buf);
 				}
 				catch (IOException e) {
-					Msg.error(this, "Could not write terminal output", e);
+					Msg.error(this, "Could not write terminal output: " + e);
 				}
 			}
 		}), in);
+	}
+
+	@Override
+	public Terminal createWithStreams(Charset charset, InputStream in, OutputStream out) {
+		return createWithStreams(this, charset, in, out);
 	}
 
 	@Override

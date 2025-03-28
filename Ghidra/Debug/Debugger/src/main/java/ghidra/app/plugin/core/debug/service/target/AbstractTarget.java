@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -19,17 +19,13 @@ import java.util.*;
 import java.util.Map.Entry;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
-import java.util.stream.Collectors;
-import java.util.stream.Stream;
 
 import docking.ActionContext;
 import ghidra.app.context.NavigatableActionContext;
-import ghidra.app.context.ProgramLocationActionContext;
 import ghidra.app.nav.Navigatable;
 import ghidra.app.services.*;
 import ghidra.app.services.DebuggerStaticMappingService.MappedAddressRange;
 import ghidra.async.AsyncUtils;
-import ghidra.debug.api.target.ActionName;
 import ghidra.debug.api.target.Target;
 import ghidra.debug.api.tracemgr.DebuggerCoordinates;
 import ghidra.framework.plugintool.PluginTool;
@@ -46,7 +42,6 @@ import ghidra.trace.model.guest.TracePlatform;
 import ghidra.trace.model.program.TraceProgramView;
 import ghidra.trace.model.thread.TraceThread;
 import ghidra.trace.util.TraceRegisterUtils;
-import ghidra.util.Msg;
 import ghidra.util.Swing;
 import ghidra.util.exception.CancelledException;
 import ghidra.util.task.TaskMonitor;
@@ -56,6 +51,10 @@ public abstract class AbstractTarget implements Target {
 
 	public AbstractTarget(PluginTool tool) {
 		this.tool = tool;
+	}
+
+	public PluginTool getTool() {
+		return tool;
 	}
 
 	private Address staticToDynamicAddress(ProgramLocation location) {
@@ -73,10 +72,14 @@ public abstract class AbstractTarget implements Target {
 	}
 
 	protected Address findAddress(Navigatable nav) {
-		if (nav.isDynamic()) {
-			return nav.getLocation().getAddress();
+		ProgramLocation location = nav.getLocation();
+		if (location == null) {
+			return null;
 		}
-		return staticToDynamicAddress(nav.getLocation());
+		if (nav.isDynamic()) {
+			return location.getAddress();
+		}
+		return staticToDynamicAddress(location);
 	}
 
 	protected Address findAddress(MarkerLocation location) {
@@ -94,7 +97,7 @@ public abstract class AbstractTarget implements Target {
 				return address;
 			}
 		}
-		if (context.getContextObject() instanceof MarkerLocation ml) {
+		if (context != null && context.getContextObject() instanceof MarkerLocation ml) {
 			Address address = findAddress(ml);
 			if (address != null) {
 				return address;
@@ -118,7 +121,7 @@ public abstract class AbstractTarget implements Target {
 	}
 
 	protected AddressRange singleRange(AddressSetView set) {
-		if (set.getNumAddressRanges() != 1) {
+		if (set == null || set.getNumAddressRanges() != 1) {
 			return null;
 		}
 		return set.getFirstRange();
@@ -178,69 +181,6 @@ public abstract class AbstractTarget implements Target {
 		return null;
 	}
 
-	protected abstract Map<String, ActionEntry> collectAddressActions(
-			ProgramLocationActionContext context);
-
-	protected Map<String, ActionEntry> collectAllActions(ActionContext context) {
-		return Stream.of(
-			collectResumeActions(context),
-			collectInterruptActions(context),
-			collectKillActions(context),
-			collectStepIntoActions(context),
-			collectStepOverActions(context),
-			collectStepOutActions(context),
-			collectStepExtActions(context))
-				.flatMap(m -> m.entrySet().stream())
-				.collect(Collectors.toMap(Entry::getKey, Entry::getValue));
-	}
-
-	protected abstract Map<String, ActionEntry> collectResumeActions(ActionContext context);
-
-	protected abstract Map<String, ActionEntry> collectInterruptActions(ActionContext context);
-
-	protected abstract Map<String, ActionEntry> collectKillActions(ActionContext context);
-
-	protected abstract Map<String, ActionEntry> collectStepIntoActions(ActionContext context);
-
-	protected abstract Map<String, ActionEntry> collectStepOverActions(ActionContext context);
-
-	protected abstract Map<String, ActionEntry> collectStepOutActions(ActionContext context);
-
-	protected abstract Map<String, ActionEntry> collectStepExtActions(ActionContext context);
-
-	@Override
-	public Map<String, ActionEntry> collectActions(ActionName name, ActionContext context) {
-		if (name == null) {
-			if (context instanceof ProgramLocationActionContext ctx) {
-				return collectAddressActions(ctx);
-			}
-			return collectAllActions(context);
-		}
-		else if (ActionName.RESUME.equals(name)) {
-			return collectResumeActions(context);
-		}
-		else if (ActionName.INTERRUPT.equals(name)) {
-			return collectInterruptActions(context);
-		}
-		else if (ActionName.KILL.equals(name)) {
-			return collectKillActions(context);
-		}
-		else if (ActionName.STEP_INTO.equals(name)) {
-			return collectStepIntoActions(context);
-		}
-		else if (ActionName.STEP_OVER.equals(name)) {
-			return collectStepOverActions(context);
-		}
-		else if (ActionName.STEP_OUT.equals(name)) {
-			return collectStepOutActions(context);
-		}
-		else if (ActionName.STEP_EXT.equals(name)) {
-			return collectStepExtActions(context);
-		}
-		Msg.warn(this, "Unrecognized action name: " + name);
-		return Map.of();
-	}
-
 	protected static <T> T doSync(String name, Supplier<CompletableFuture<T>> supplier)
 			throws InterruptedException, ExecutionException {
 		if (Swing.isSwingThread()) {
@@ -291,6 +231,11 @@ public abstract class AbstractTarget implements Target {
 	protected static void runSyncMonitored(TaskMonitor monitor, String name,
 			Supplier<CompletableFuture<Void>> supplier) throws CancelledException {
 		getSyncMonitored(monitor, name, supplier);
+	}
+
+	@Override
+	public String execute(String command, boolean toString) {
+		return getSync("execute", () -> executeAsync(command, toString));
 	}
 
 	@Override
@@ -384,6 +329,11 @@ public abstract class AbstractTarget implements Target {
 	public void toggleBreakpoint(TraceBreakpoint breakpoint, boolean enabled) {
 		String msg = enabled ? "enable breakpoint" : "disable breakpoint";
 		runSync(msg, () -> toggleBreakpointAsync(breakpoint, enabled));
+	}
+
+	@Override
+	public void forceTerminate() {
+		runSync("force terminate", () -> forceTerminateAsync());
 	}
 
 	@Override

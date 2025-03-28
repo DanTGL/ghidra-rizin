@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -87,7 +87,7 @@ public class StructureEditorLockedEnablementTest extends AbstractStructureEditor
 				String name = cycleGroupAction.getName();
 				checkEnablement(action,
 					name.equals("Cycle: byte,word,dword,qword") ||
-						name.equals("Cycle: float,double") ||
+						name.equals("Cycle: float,double,longdouble") ||
 						name.equals("Cycle: char,string,unicode"));
 			}
 			else {
@@ -138,7 +138,7 @@ public class StructureEditorLockedEnablementTest extends AbstractStructureEditor
 				String name = cycleGroupAction.getName();
 				checkEnablement(action,
 					name.equals("Cycle: byte,word,dword,qword") ||
-						name.equals("Cycle: float,double") ||
+						name.equals("Cycle: float,double,longdouble") ||
 						name.equals("Cycle: char,string,unicode"));
 			}
 			else {
@@ -361,7 +361,7 @@ public class StructureEditorLockedEnablementTest extends AbstractStructureEditor
 
 		setSelection(new int[] { 19 });
 		assertEquals("simpleStructureTypedef", getDataType(19).getDisplayName());
-		assertTrue(!unpackageAction.isEnabled());
+		assertTrue(unpackageAction.isEnabled());
 
 		setSelection(new int[] { 21 });
 		assertEquals("simpleStructure", getDataType(21).getDisplayName());

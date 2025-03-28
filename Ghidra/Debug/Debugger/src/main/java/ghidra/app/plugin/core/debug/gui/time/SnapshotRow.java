@@ -4,9 +4,9 @@
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
  * You may obtain a copy of the License at
- * 
+ *
  *      http://www.apache.org/licenses/LICENSE-2.0
- * 
+ *
  * Unless required by applicable law or agreed to in writing, software
  * distributed under the License is distributed on an "AS IS" BASIS,
  * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
@@ -21,6 +21,7 @@ import db.Transaction;
 import ghidra.trace.model.Trace;
 import ghidra.trace.model.thread.TraceThread;
 import ghidra.trace.model.time.TraceSnapshot;
+import ghidra.trace.model.time.schedule.TraceSchedule;
 import ghidra.util.DateUtils;
 
 public class SnapshotRow {
@@ -38,6 +39,14 @@ public class SnapshotRow {
 		return snapshot;
 	}
 
+	public TraceSchedule getTime() {
+		long snap = snapshot.getKey();
+		if (snap < 0) {
+			return snapshot.getSchedule();
+		}
+		return TraceSchedule.snap(snap);
+	}
+
 	public long getSnap() {
 		return snapshot.getKey();
 	}
@@ -48,7 +57,7 @@ public class SnapshotRow {
 
 	public String getEventThreadName() {
 		TraceThread thread = snapshot.getEventThread();
-		return thread == null ? "" : thread.getName();
+		return thread == null ? "" : thread.getName(snapshot.getKey());
 	}
 
 	public String getSchedule() {
